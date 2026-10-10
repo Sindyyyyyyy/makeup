@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "化妆师后台",
   "navigationBarBackgroundColor": "#C95B7C",
-  "navigationBarTextStyle": "white"
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "info-form": "/components/infoForm/infoForm"
+  }
 }

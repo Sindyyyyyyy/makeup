@@ -252,6 +252,13 @@
   border-radius: 24rpx;
   font-size: 24rpx;
 }
+.btn-detail {
+  background: #FFF0F4;
+  border: 2rpx solid #FFB6C8;
+  color: #C95B7C !important;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+}
 .btn-primary {
   background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
   color: #FFFFFF !important;

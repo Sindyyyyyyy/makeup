@@ -35,7 +35,7 @@
       <view wx:if="{{form.skinType === '敏感性'}}" class="form-row">
         <text class="form-label">敏感性程度</text>
         <input class="form-input" value="{{form.sensitiveLevel}}" placeholder="如：轻微泛红、刺痛"
-               bindinput="onFormInput" data-field="sensitiveLevel" maxlength="50" />
+               bindinput="onFormInput" data-field="sensitiveLevel" disabled="{{readonly}}" maxlength="50" />
       </view>
 
       <view class="form-row">
@@ -68,22 +68,22 @@
       <view wx:if="{{form.hasAllergy === '有'}}" class="form-row">
         <text class="form-label">过敏说明</text>
         <input class="form-input" value="{{form.allergyNote}}" placeholder="如：对某款粉底液过敏"
-               bindinput="onFormInput" data-field="allergyNote" maxlength="100" />
+               bindinput="onFormInput" data-field="allergyNote" disabled="{{readonly}}" maxlength="100" />
       </view>
 
       <view class="form-row form-row-col">
-        <text class="form-label">素颜照{{requirePhoto ? ' *' : ''}}（建议 3~5 张不同角度）</text>
+        <text class="form-label">素颜照{{requirePhoto && !readonly ? ' *' : ''}}（{{form.photos.length}}/{{maxPhotos}}）</text>
         <view class="photo-grid">
           <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item">
             <image class="photo-img" src="{{item}}" mode="aspectFill" />
-            <view class="photo-del" catchtap="onDeletePhoto" data-idx="{{index}}">×</view>
+            <view wx:if="{{!readonly}}" class="photo-del" catchtap="onDeletePhoto" data-idx="{{index}}">×</view>
           </view>
-          <view wx:if="{{form.photos.length < maxPhotos}}" class="photo-add" bindtap="onAddPhoto">
+          <view wx:if="{{!readonly && form.photos.length < maxPhotos}}" class="photo-add" bindtap="onAddPhoto">
             <text class="photo-add-icon">＋</text>
             <text class="photo-add-text">{{form.photos.length}}/{{maxPhotos}}</text>
           </view>
         </view>
-        <view wx:if="{{requirePhoto && form.photos.length === 0}}" class="field-warn">
+        <view wx:if="{{requirePhoto && !readonly && form.photos.length === 0}}" class="field-warn">
           至少上传 1 张素颜照才能预约
         </view>
       </view>
@@ -93,10 +93,15 @@
     <view wx:if="{{missingTip}}" class="missing-tip">{{missingTip}}</view>
 
     <view class="modal-buttons">
-      <button wx:if="{{showCancel}}" class="btn-secondary" bindtap="onClose">取消</button>
-      <button class="btn-primary" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">
-        {{submitText}}
-      </button>
+      <block wx:if="{{readonly}}">
+        <button class="btn-secondary" bindtap="onClose">关闭</button>
+      </block>
+      <block wx:else>
+        <button wx:if="{{showCancel}}" class="btn-secondary" bindtap="onClose">取消</button>
+        <button class="btn-primary" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">
+          {{submitText}}
+        </button>
+      </block>
     </view>
 
   </view>

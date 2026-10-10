@@ -1,0 +1,9 @@
+{
+  "name": "adminGetUserProfile",
+  "version": "1.0.0",
+  "description": "化妆师按 openid 读取顾客的昵称与个人信息表",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -26,6 +26,11 @@ Page({
     statusText: STATUS_TEXT,
     page: 0,
     hasMore: false,
+    // 顾客个人信息（只读查看）
+    showUserProfile: false,
+    userInfo: null,
+    userNickname: '',
+    userInfoHint: '',
   },
 
   onLoad() {
@@ -153,6 +158,53 @@ Page({
       ? bookings
       : bookings.filter(b => b.status === filterStatus);
     this.setData({ filtered });
+  },
+
+  // 查看顾客的个人信息（只读）。资料以云端为准，每次点开都重新拉
+  async openUserProfile(e) {
+    const openid = e.currentTarget.dataset.openid;
+    if (!openid) return;
+    const token = wx.getStorageSync(TOKEN_KEY);
+    if (!token) {
+      this.setData({ isAdmin: false });
+      return;
+    }
+    wx.showLoading({ title: '加载中', mask: true });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'adminGetUserProfile',
+        data: { token, openid },
+      });
+      const r = res.result;
+      if (!r || !r.success) {
+        if (r && r.code === 'UNAUTHORIZED') {
+          wx.removeStorageSync(TOKEN_KEY);
+          this.setData({ isAdmin: false });
+          wx.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
+        } else {
+          wx.showToast({ title: (r && r.message) || '读取失败', icon: 'none' });
+        }
+        return;
+      }
+      const info = r.exists ? r.info : null;
+      this.setData({
+        showUserProfile: true,
+        userInfo: info,
+        userNickname: (r.profile && r.profile.nickname) || '',
+        userInfoHint: r.exists
+          ? '顾客自己填写，以这里显示的为准'
+          : '该顾客还没有填写个人信息',
+      });
+    } catch (err) {
+      console.error('读取顾客资料失败', err);
+      wx.showToast({ title: '读取失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  closeUserProfile() {
+    this.setData({ showUserProfile: false });
   },
 
   async doAction(e) {

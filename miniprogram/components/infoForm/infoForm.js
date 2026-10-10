@@ -25,6 +25,8 @@ Component({
     // 是否要求“填完整”才能提交：预约前置确认用 true，单纯填资料用 false
     requireComplete: { type: Boolean, value: false },
     requirePhoto: { type: Boolean, value: false },
+    // 只读查看（化妆师后台看顾客资料）：不可编辑、无保存按钮
+    readonly: { type: Boolean, value: false },
   },
 
   data: {
@@ -54,12 +56,14 @@ Component({
     },
 
     onFormInput(e) {
+      if (this.data.readonly) return;
       const field = e.currentTarget.dataset.field;
       if (!field) return;
       this.setData({ [`form.${field}`]: e.detail.value });
     },
 
     onChipTap(e) {
+      if (this.data.readonly) return;
       const { group, value } = e.currentTarget.dataset;
       if (!group) return;
       // 再点一次已选项 = 取消选择
@@ -73,6 +77,7 @@ Component({
     },
 
     async onAddPhoto() {
+      if (this.data.readonly) return;
       const remain = MAX_PHOTOS - this.data.form.photos.length;
       if (remain <= 0) {
         wx.showToast({ title: `最多 ${MAX_PHOTOS} 张`, icon: 'none' });
@@ -111,13 +116,14 @@ Component({
     },
 
     onDeletePhoto(e) {
+      if (this.data.readonly) return;
       const photos = this.data.form.photos.slice();
       photos.splice(e.currentTarget.dataset.idx, 1);
       this.setData({ 'form.photos': photos, missingTip: '' });
     },
 
     onSubmit() {
-      if (this.data.submitting) return;
+      if (this.data.submitting || this.data.readonly) return;
       const form = this.data.form;
       if (this.data.requireComplete) {
         const missing = missingFields(form, { requirePhoto: this.data.requirePhoto });
