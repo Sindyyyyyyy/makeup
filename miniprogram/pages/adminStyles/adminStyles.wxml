@@ -1,0 +1,56 @@
+<view class="container">
+  <view class="page-header">
+    <view class="back-btn" bindtap="goBack">‹ 返回</view>
+    <text class="page-title">妆容管理</text>
+    <view style="width:80rpx"></view>
+  </view>
+
+  <view wx:if="{{!isAdmin}}" class="login-tip">
+    <text>请先在「化妆师后台」登录后再管理妆容</text>
+  </view>
+
+  <block wx:else>
+    <!-- 新增 / 编辑表单 -->
+    <view class="form-card">
+      <view class="form-title">{{editingId ? '编辑妆造' : '新增妆造'}}</view>
+      <view class="form-row">
+        <input class="form-input" placeholder="妆造名称，如 新娘妆"
+               value="{{form.name}}" bindinput="onNameInput" maxlength="20" />
+        <view class="price-wrap">
+          <text class="yen">¥</text>
+          <input class="price-input" type="digit" placeholder="价格"
+                 value="{{form.price}}" bindinput="onPriceInput" />
+        </view>
+      </view>
+      <view class="form-btns">
+        <button wx:if="{{editingId}}" class="btn-secondary" bindtap="cancelEdit">取消</button>
+        <button class="btn-primary" bindtap="saveStyle" loading="{{saving}}">保存</button>
+      </view>
+    </view>
+
+    <!-- 妆造库列表 -->
+    <view class="style-list">
+      <view class="list-title">妆造库（{{styles.length}}）</view>
+      <view wx:if="{{styles.length === 0 && !loading}}" class="empty">
+        还没有妆造，在上方添加吧 🌸
+      </view>
+      <view wx:for="{{styles}}" wx:key="_id" class="style-card">
+        <view class="style-info">
+          <text class="style-name">{{item.name}}</text>
+          <text class="style-price">¥{{item.price}}</text>
+        </view>
+        <view class="style-ops">
+          <view class="op-btn" bindtap="startEdit" data-id="{{item._id}}">编辑</view>
+          <view class="op-btn danger" bindtap="deleteStyle" data-id="{{item._id}}">删除</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="tips">
+      <view class="tips-title">💡 操作说明</view>
+      <view class="tips-item">· 这里维护的妆造会作为「时段管理」开放时段时的可选按钮</view>
+      <view class="tips-item">· 库里有 n 个妆造，弹窗里就有 n 个按钮，点击即可加入该时段</view>
+      <view class="tips-item">· 改名或改价只影响之后新添加；已开放时段里已添加的妆造需在该时段单独修改</view>
+    </view>
+  </block>
+</view>

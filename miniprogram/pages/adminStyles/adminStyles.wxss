@@ -1,0 +1,176 @@
+/* pages/adminStyles/adminStyles.wxss - 妆容管理页 */
+.container {
+  padding: 24rpx;
+  padding-bottom: 120rpx;
+  min-height: 100vh;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+.back-btn {
+  color: #C95B7C;
+  font-size: 28rpx;
+  font-weight: 500;
+  padding: 8rpx 0;
+}
+.page-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #4A4A4A;
+}
+
+.login-tip {
+  text-align: center;
+  color: #BBB;
+  font-size: 26rpx;
+  padding: 40rpx 0;
+}
+
+/* 表单卡片 */
+.form-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.form-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 16rpx;
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.form-input {
+  flex: 2;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  background: #FFF8FA;
+}
+.price-wrap {
+  flex: 1.2;
+  display: flex;
+  align-items: center;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 0 12rpx;
+  background: #FFF8FA;
+}
+.yen { color: #C95B7C; font-size: 28rpx; }
+.price-input { flex: 1; padding: 16rpx 8rpx; font-size: 28rpx; }
+.form-btns {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+/* 妆造列表 */
+.style-list {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.list-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 16rpx;
+}
+.empty {
+  text-align: center;
+  color: #BBB;
+  padding: 40rpx 0;
+  font-size: 26rpx;
+}
+.style-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+  background: #FFFCFD;
+}
+.style-info {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  min-width: 0;
+}
+.style-name {
+  font-size: 28rpx;
+  color: #4A4A4A;
+  font-weight: 500;
+}
+.style-price {
+  font-size: 26rpx;
+  color: #C95B7C;
+  font-weight: 600;
+}
+.style-ops {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+.op-btn {
+  color: #C95B7C;
+  font-size: 24rpx;
+  border: 2rpx solid #FFB6C8;
+  border-radius: 24rpx;
+  padding: 6rpx 20rpx;
+}
+.op-btn.danger {
+  color: #999;
+  border-color: #EEE;
+}
+
+/* 按钮 */
+.btn-primary {
+  flex: 1;
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
+.btn-secondary {
+  flex: 1;
+  background: #F5F5F5;
+  color: #999 !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
+
+/* 说明 */
+.tips {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.tips-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 12rpx;
+}
+.tips-item {
+  font-size: 24rpx;
+  color: #666;
+  margin-top: 8rpx;
+  line-height: 1.6;
+}

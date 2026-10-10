@@ -2,7 +2,8 @@
   "pages": [
     "pages/index/index",
     "pages/admin/admin",
-    "pages/adminSlots/adminSlots"
+    "pages/adminSlots/adminSlots",
+    "pages/adminStyles/adminStyles"
   ],
   "window": {
     "backgroundColor": "#FFF5F7",

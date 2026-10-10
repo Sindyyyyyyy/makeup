@@ -309,10 +309,10 @@
   border: 2rpx solid #FFE0E8;
   background: #FFF8FA;
   border-radius: 16rpx;
-  padding: 24rpx 8rpx;
+  padding: 12rpx 8rpx;
   text-align: center;
   transition: all .15s;
-  min-height: 120rpx;
+  min-height: 84rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

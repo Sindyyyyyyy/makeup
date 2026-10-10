@@ -82,14 +82,16 @@ exports.main = async (event) => {
       return { success: false, message: '操作失败，预约状态已变化，请刷新后重试' };
     }
 
-    // 仅拒绝时释放时段；完成只做归档，保留占用记录以便追溯
-    if (rule.to === 'rejected') {
+    // 仅拒绝时释放时段；完成只做归档，保留占用记录以便追溯。
+    // 完成时额外打上 done 标记，时段管理页据此显示「已完成」而不是「已预约」
+    if (rule.to === 'rejected' || rule.to === 'completed') {
       const slotRes = await db.collection('timeSlots').where({ date: booking.date }).limit(1).get();
       const slotDoc = slotRes.data && slotRes.data[0];
       if (slotDoc) {
-        await db.collection('timeSlots').doc(slotDoc._id).update({
-          data: { [`${booking.slot}.booked`]: false }
-        });
+        const data = rule.to === 'rejected'
+          ? { [`${booking.slot}.booked`]: false, [`${booking.slot}.done`]: false }
+          : { [`${booking.slot}.done`]: true };
+        await db.collection('timeSlots').doc(slotDoc._id).update({ data });
       }
     }
 

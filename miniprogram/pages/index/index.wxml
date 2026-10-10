@@ -55,7 +55,8 @@
           <view class="slot-btn available"
                 bindtap="onSlotTap"
                 data-date="{{date.date}}" data-slot="{{slot.key}}"
-                data-label="{{slot.time}}" data-status="available">
+                data-label="{{slot.time}}" data-status="available"
+                data-styles="{{grid[slot._idx][date._idx].slotState.styles}}">
             <text>可约</text>
           </view>
         </block>
@@ -90,7 +91,7 @@
         <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
       </view>
       <view class="bd-info">姓名：{{item.name || '—'}}</view>
-      <view class="bd-info">肤质：{{item.skinType || '—'}}</view>
+      <view wx:if="{{item.styleName}}" class="bd-info">妆造：{{item.styleName}} · ¥{{item.stylePrice}}</view>
       <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
       <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
         <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">取消预约</button>
@@ -115,13 +116,18 @@
     </view>
 
     <view class="form-row">
-      <text class="form-label">肤质 *</text>
-      <textarea class="form-textarea" placeholder="请描述你的肤质（如：干性 / 油性 / 混合性 / 敏感肌等）" value="{{form.skinType}}" bindinput="onSkinTypeInput" maxlength="200" auto-height />
-    </view>
-
-    <view class="form-row">
-      <text class="form-label">备注（选填）</text>
-      <textarea class="form-textarea" placeholder="有什么想特别告诉化妆师的吗？" value="{{form.remark}}" bindinput="onRemarkInput" maxlength="500" auto-height />
+      <text class="form-label">选择妆造{{modalStyles.length > 0 ? ' *' : ''}}</text>
+      <view wx:if="{{modalStyles.length === 0}}" class="style-grid grid-0">
+        该时段暂未设置妆造，提交后由化妆师与你确认
+      </view>
+      <view wx:else class="style-grid grid-{{modalStyles.length > 3 ? 3 : modalStyles.length}}">
+        <view wx:for="{{modalStyles}}" wx:key="name"
+              class="style-btn {{selectedStyle === index ? 'on' : 'off'}}"
+              bindtap="onSelectStyle" data-idx="{{index}}">
+          <text class="style-label">{{item.name}}</text>
+          <text class="price-none">¥{{item.price}}</text>
+        </view>
+      </view>
     </view>
 
     <view class="modal-buttons">

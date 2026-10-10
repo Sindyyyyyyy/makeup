@@ -7,6 +7,34 @@ const db = cloud.database();
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
 const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
 
+// 妆造（样式）校验：名称 ≤ 20 字，价格 0~99999 元
+const MAX_STYLE_NAME = 20;
+const MAX_STYLE_COUNT = 10;
+const MAX_PRICE = 99999;
+
+function normalizeStyles(styles) {
+  if (!Array.isArray(styles)) return null;
+  if (styles.length > MAX_STYLE_COUNT) {
+    return { error: `妆造最多添加 ${MAX_STYLE_COUNT} 个` };
+  }
+  const clean = [];
+  for (const s of styles) {
+    const name = String((s && s.name) || '').trim();
+    if (!name) return { error: '妆造名称不能为空' };
+    if (name.length > MAX_STYLE_NAME) return { error: `妆造名称不能超过 ${MAX_STYLE_NAME} 个字` };
+
+    const rawPrice = typeof s.price === 'number' ? s.price : Number(String((s && s.price) || '').trim());
+    if (!isFinite(rawPrice) || isNaN(rawPrice)) return { error: `妆造「${name}」的价格无效` };
+    if (rawPrice < 0) return { error: `妆造「${name}」的价格不能为负` };
+    if (rawPrice > MAX_PRICE) return { error: `妆造「${name}」的价格不能超过 ${MAX_PRICE} 元` };
+
+    clean.push({ name, price: Math.round(rawPrice * 100) / 100 });
+  }
+  const names = clean.map(s => s.name);
+  if (new Set(names).size !== names.length) return { error: '妆造名称不能重复' };
+  return { styles: clean };
+}
+
 // ============ 管理令牌校验（与 adminLogin 签发逻辑保持一致）============
 const TOKEN_SECRET = process.env.TOKEN_SECRET || 'makeup-miniprogram-token-secret-v1';
 
@@ -36,7 +64,7 @@ exports.main = async (event) => {
     return { success: false, message: '权限验证失败，请重新登录', code: 'UNAUTHORIZED' };
   }
 
-  const { date, slot, action } = event;
+  const { date, slot, action, styles } = event;
 
   if (!date || !slot || !action) {
     return { success: false, message: '参数不完整' };
@@ -49,6 +77,17 @@ exports.main = async (event) => {
   }
   if (!['open', 'close'].includes(action)) {
     return { success: false, message: '无效操作' };
+  }
+
+  // styles 仅在开放时下发；传了就必须合法且至少一个
+  let cleanStyles = null;
+  if (styles !== undefined && styles !== null) {
+    const parsed = normalizeStyles(styles);
+    if (parsed.error) return { success: false, message: parsed.error };
+    cleanStyles = parsed.styles;
+    if (action === 'open' && cleanStyles.length === 0) {
+      return { success: false, message: '请至少添加一个可画的妆造' };
+    }
   }
 
   try {
@@ -70,9 +109,20 @@ exports.main = async (event) => {
         };
       }
 
+      // 已有预约时该时段已对顾客可见，妆造不可再增删改，否则已下单顾客看到的
+      // 妆造/价格会与实际约定不符
+      if (open && isBooked && cleanStyles) {
+        return {
+          success: false,
+          message: `该时段（${SLOT_NAMES[slot]}）已有预约，不能再修改妆造。如需调整，请先取消或拒绝该预约`,
+        };
+      }
+
       await db.collection('timeSlots').doc(record._id).update({
         data: {
           [`${slot}.open`]: open,
+          // 关闭时段时保留已配置的妆造，方便下次开放直接复用
+          ...(cleanStyles ? { [`${slot}.styles`]: cleanStyles } : {}),
           ...(open ? {} : { [`${slot}.booked`]: false }),
         }
       });
@@ -80,11 +130,11 @@ exports.main = async (event) => {
       // 新建：其余时段默认关闭
       const initData = {
         date,
-        morning: { open: false, booked: false },
-        afternoon: { open: false, booked: false },
-        evening: { open: false, booked: false }
+        morning: { open: false, booked: false, done: false },
+        afternoon: { open: false, booked: false, done: false },
+        evening: { open: false, booked: false, done: false }
       };
-      initData[slot] = { open, booked: false };
+      initData[slot] = { open, booked: false, done: false, ...(cleanStyles ? { styles: cleanStyles } : {}) };
       await db.collection('timeSlots').add({ data: initData });
     }
 

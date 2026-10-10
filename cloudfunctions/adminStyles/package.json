@@ -1,0 +1,9 @@
+{
+  "name": "adminStyles",
+  "version": "1.0.0",
+  "description": "化妆师妆造库（常用妆造及价格）的增删改查",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

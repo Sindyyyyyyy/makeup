@@ -198,4 +198,8 @@ Page({
   goSlots() {
     wx.navigateTo({ url: '/pages/adminSlots/adminSlots' });
   },
+
+  goStyles() {
+    wx.navigateTo({ url: '/pages/adminStyles/adminStyles' });
+  },
 });

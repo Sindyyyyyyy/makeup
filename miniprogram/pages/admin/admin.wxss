@@ -93,7 +93,12 @@
 }
 .entry-text {
   flex: 1;
+  min-width: 0;
 }
+/* 两张入口卡片并排时收紧图标，避免文字被挤换行 */
+.entry-row.two .entry-card { padding: 20rpx; }
+.entry-row.two .entry-icon { font-size: 40rpx; margin-right: 10rpx; }
+.entry-row.two .entry-arrow { display: none; }
 .entry-title {
   font-size: 30rpx;
   font-weight: 600;

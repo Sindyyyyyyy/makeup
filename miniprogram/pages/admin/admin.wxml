@@ -19,12 +19,20 @@
     </view>
 
     <!-- 功能入口 -->
-    <view class="entry-row">
+    <view class="entry-row two">
       <view class="entry-card" bindtap="goSlots">
         <text class="entry-icon">🌷</text>
         <view class="entry-text">
           <view class="entry-title">时段管理</view>
           <view class="entry-sub">开放/关闭预约时段</view>
+        </view>
+        <text class="entry-arrow">›</text>
+      </view>
+      <view class="entry-card" bindtap="goStyles">
+        <text class="entry-icon">💄</text>
+        <view class="entry-text">
+          <view class="entry-title">妆容管理</view>
+          <view class="entry-sub">常用妆造及价格</view>
         </view>
         <text class="entry-arrow">›</text>
       </view>
@@ -70,7 +78,7 @@
           <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
         </view>
         <view class="bd-info">姓名：{{item.name || '—'}}</view>
-        <view class="bd-info">肤质：{{item.skinType || '—'}}</view>
+        <view wx:if="{{item.styleName}}" class="bd-info">妆造：{{item.styleName}} · ¥{{item.stylePrice}}</view>
         <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
         <view class="bd-time">下单时间：{{item.createdAtText}}</view>
 

@@ -7,7 +7,7 @@ const db = cloud.database();
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
 const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
 
-const MAX = { name: 20, skinType: 200, remark: 500 };
+const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
 function todayStr(offsetDays) {
   const d = new Date();
@@ -30,7 +30,7 @@ function currentOpenid(context) {
 }
 
 exports.main = async (event, context) => {
-  const { date, slot, name, skinType, remark } = event;
+  const { date, slot, name, skinType, remark, styleName } = event;
   const openid = currentOpenid(context);
 
   // 顾客端不再需要密码，身份由 openid 决定
@@ -51,7 +51,7 @@ exports.main = async (event, context) => {
     };
   }
 
-  if (!date || !slot || !name || !skinType) {
+  if (!date || !slot || !name) {
     return { success: false, message: '参数不完整' };
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -69,8 +69,9 @@ exports.main = async (event, context) => {
   const cleanName = String(name).trim();
   const cleanSkin = String(skinType).trim();
   const cleanRemark = String(remark || '').trim();
+  const cleanStyleName = String(styleName || '').trim();
+  if (cleanStyleName.length > MAX.styleName) return { success: false, message: `妆造名称不能超过 ${MAX.styleName} 个字` };
   if (!cleanName) return { success: false, message: '请填写姓名' };
-  if (!cleanSkin) return { success: false, message: '请填写肤质' };
   if (cleanName.length > MAX.name) return { success: false, message: `姓名不能超过 ${MAX.name} 个字` };
   if (cleanSkin.length > MAX.skinType) return { success: false, message: `肤质描述不能超过 ${MAX.skinType} 个字` };
   if (cleanRemark.length > MAX.remark) return { success: false, message: `备注不能超过 ${MAX.remark} 个字` };
@@ -98,12 +99,27 @@ exports.main = async (event, context) => {
       return { success: false, message: `该时段（${SLOT_NAMES[slot]}）未开放预约` };
     }
 
+    // 服务端校验所选妆造确实在该时段的开放列表中，价格以服务端配置为准
+    const styleList = Array.isArray(slotData.styles) ? slotData.styles : [];
+    let finalStyleName = '';
+    let finalPrice = 0;
+    if (cleanStyleName) {
+      const matched = styleList.find(s => s && s.name === cleanStyleName);
+      if (!matched) {
+        return { success: false, message: '所选妆造已不在该时段的开放列表中，请重新选择' };
+      }
+      finalStyleName = matched.name;
+      finalPrice = Number(matched.price) || 0;
+    } else if (styleList.length > 0) {
+      return { success: false, message: '请选择要画的妆造' };
+    }
+
     // 原子占用：条件更新（单文档更新本身是原子的），避免并发重复预约
     const claim = await db.collection('timeSlots').where({
       _id: slotDoc._id,
       [`${slot}.open`]: true,
       [`${slot}.booked`]: false,
-    }).update({ data: { [`${slot}.booked`]: true } });
+    }).update({ data: { [`${slot}.booked`]: true, [`${slot}.done`]: false } });
 
     if (claim.stats.updated !== 1) {
       return { success: false, message: `该时段（${SLOT_NAMES[slot]}）刚被预约，请刷新后重试` };
@@ -120,6 +136,8 @@ exports.main = async (event, context) => {
           name: cleanName,
           skinType: cleanSkin,
           remark: cleanRemark,
+          styleName: finalStyleName,
+          stylePrice: finalPrice,
           status: 'pending',
           createTime: db.serverDate(),
           updateTime: db.serverDate()

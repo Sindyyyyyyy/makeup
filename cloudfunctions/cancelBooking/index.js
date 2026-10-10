@@ -72,7 +72,7 @@ exports.main = async (event, context) => {
     const slotDoc = slotRes.data && slotRes.data[0];
     if (slotDoc) {
       await db.collection('timeSlots').doc(slotDoc._id).update({
-        data: { [`${booking.slot}.booked`]: false }
+        data: { [`${booking.slot}.booked`]: false, [`${booking.slot}.done`]: false }
       });
     }
 

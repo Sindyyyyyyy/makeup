@@ -14,10 +14,10 @@ Page({
     modalInfo: '',
     modalDate: '',
     modalSlot: '',
+    modalStyles: [],
+    selectedStyle: -1,
     form: {
       name: '',
-      skinType: '',
-      remark: '',
     },
     submitting: false,
   },
@@ -138,15 +138,18 @@ Page({
 
   // ============ 预约流程 ============
   onSlotTap(e) {
-    const { date, slot, label, status } = e.currentTarget.dataset;
+    const { date, slot, label, status, styles } = e.currentTarget.dataset;
     if (status !== 'available') return;
 
+    const list = Array.isArray(styles) ? styles : [];
     this.setData({
       showModal: true,
       modalDate: date,
       modalSlot: slot,
       modalInfo: `${date} ${label}`,
-      form: { name: '', skinType: '', remark: '' },
+      modalStyles: list,
+      selectedStyle: list.length === 1 ? 0 : -1,
+      form: { name: '' },
     });
   },
 
@@ -156,18 +159,21 @@ Page({
 
   noop() {},
 
+  onSelectStyle(e) {
+    this.setData({ selectedStyle: Number(e.currentTarget.dataset.idx) });
+  },
+
   onNameInput(e) { this.setData({ 'form.name': e.detail.value }); },
-  onSkinTypeInput(e) { this.setData({ 'form.skinType': e.detail.value }); },
-  onRemarkInput(e) { this.setData({ 'form.remark': e.detail.value }); },
 
   async submitBooking() {
-    const { form, modalDate, modalSlot } = this.data;
+    const { form, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
     if (!form.name || !form.name.trim()) {
       return wx.showToast({ title: '请输入姓名', icon: 'none' });
     }
-    if (!form.skinType || !form.skinType.trim()) {
-      return wx.showToast({ title: '请填写肤质', icon: 'none' });
+    if (modalStyles.length > 0 && selectedStyle < 0) {
+      return wx.showToast({ title: '请选择要画的妆造', icon: 'none' });
     }
+    const style = selectedStyle >= 0 ? modalStyles[selectedStyle] : null;
 
     this.setData({ submitting: true });
     try {
@@ -177,8 +183,7 @@ Page({
           date: modalDate,
           slot: modalSlot,
           name: form.name.trim(),
-          skinType: form.skinType.trim(),
-          remark: (form.remark || '').trim(),
+          styleName: style ? style.name : '',
         },
       });
       if (res.result && res.result.success) {

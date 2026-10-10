@@ -148,6 +148,164 @@
   color: #BBB;
   border: 2rpx dashed #DDD;
 }
+.slot-btn.done {
+  background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+  color: #1976D2;
+  border: 2rpx solid #90CAF9;
+}
+.style-count {
+  font-size: 18rpx;
+  opacity: 0.75;
+  margin-top: 2rpx;
+}
+
+/* 妆造编辑弹窗 */
+.modal-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #FFFFFF;
+  width: 90%;
+  max-width: 700rpx;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+}
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  text-align: center;
+}
+.modal-sub {
+  font-size: 24rpx;
+  color: #999;
+  text-align: center;
+  margin: 8rpx 0 24rpx;
+}
+.booked-tip {
+  background: #FFF8E1;
+  border: 2rpx solid #FFE082;
+  color: #F57F17;
+  font-size: 24rpx;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  margin-bottom: 20rpx;
+  text-align: center;
+}
+.quick-wrap {
+  margin-bottom: 24rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 2rpx dashed #FFE0E8;
+}
+.quick-title {
+  font-size: 24rpx;
+  color: #999;
+  display: block;
+  margin-bottom: 12rpx;
+}
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.quick-btn {
+  background: linear-gradient(135deg, #FFF0F4 0%, #FFE4EC 100%);
+  border: 2rpx solid #FFB6C8;
+  color: #C95B7C;
+  border-radius: 28rpx;
+  padding: 10rpx 24rpx;
+  font-size: 24rpx;
+}
+.quick-btn.disabled { opacity: 0.5; }
+.quick-empty {
+  font-size: 24rpx;
+  color: #BBB;
+  padding: 16rpx;
+  background: #F8F8F8;
+  border-radius: 12rpx;
+}
+.style-row {  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.style-name-input {
+  flex: 2;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  font-size: 26rpx;
+  background: #FFF8FA;
+}
+.price-input-wrap {
+  flex: 1.2;
+  display: flex;
+  align-items: center;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 0 12rpx;
+  background: #FFF8FA;
+}
+.yen {
+  color: #C95B7C;
+  font-size: 26rpx;
+}
+.style-price-input {
+  flex: 1;
+  padding: 16rpx 8rpx;
+  font-size: 26rpx;
+}
+.style-del {
+  color: #C95B7C;
+  font-size: 24rpx;
+  padding: 8rpx;
+}
+.style-add {
+  border: 2rpx dashed #FFB6C8;
+  color: #C95B7C;
+  border-radius: 12rpx;
+  text-align: center;
+  padding: 16rpx;
+  font-size: 26rpx;
+}
+.modal-buttons {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 32rpx;
+}
+.btn-primary {
+  flex: 1;
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
+.btn-secondary {
+  flex: 1;
+  background: #F5F5F5;
+  color: #999 !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
+.btn-danger {
+  flex: 1;
+  background: #FFF0F4;
+  color: #C95B7C !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
 
 /* 说明 */
 .tips {
