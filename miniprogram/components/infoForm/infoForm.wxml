@@ -1,0 +1,103 @@
+<!-- components/infoForm/infoForm.wxml - 个人信息表弹窗（个人中心与首页预约前共用） -->
+<view wx:if="{{visible}}" class="modal-mask" bindtap="onClose">
+  <view class="modal" catchtap="noop">
+
+    <view class="modal-title">{{title}}</view>
+    <view wx:if="{{hint}}" class="modal-hint">{{hint}}</view>
+    <scroll-view scroll-y class="info-scroll">
+
+      <view class="form-row">
+        <text class="form-label">昵称</text>
+        <!-- 与个人中心顶部共用同一字段，这里只读展示 -->
+        <view class="form-static {{form.nickname ? '' : 'is-empty'}}">
+          {{ form.nickname || '未设置昵称，请到个人中心设置' }}
+        </view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">性别</text>
+        <view class="chip-group">
+          <view wx:for="{{genderOptions}}" wx:key="*this"
+                class="chip {{form.gender === item ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="gender" data-value="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">肤质</text>
+        <view class="chip-group">
+          <view wx:for="{{skinOptions}}" wx:key="*this"
+                class="chip {{form.skinType === item ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="skinType" data-value="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{form.skinType === '敏感性'}}" class="form-row">
+        <text class="form-label">敏感性程度</text>
+        <input class="form-input" value="{{form.sensitiveLevel}}" placeholder="如：轻微泛红、刺痛"
+               bindinput="onFormInput" data-field="sensitiveLevel" maxlength="50" />
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">大面积爆痘</text>
+        <view class="chip-group">
+          <view wx:for="{{yesNoOptions}}" wx:key="*this"
+                class="chip {{form.hasAcne === item ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasAcne" data-value="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">整容/医美</text>
+        <view class="chip-group">
+          <view wx:for="{{yesNoOptions}}" wx:key="*this"
+                class="chip {{form.hasCosmeticSurgery === item ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasCosmeticSurgery" data-value="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view class="form-row">
+        <text class="form-label">化妆品/发品过敏</text>
+        <view class="chip-group">
+          <view wx:for="{{yesNoOptions}}" wx:key="*this"
+                class="chip {{form.hasAllergy === item ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasAllergy" data-value="{{item}}">{{item}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{form.hasAllergy === '有'}}" class="form-row">
+        <text class="form-label">过敏说明</text>
+        <input class="form-input" value="{{form.allergyNote}}" placeholder="如：对某款粉底液过敏"
+               bindinput="onFormInput" data-field="allergyNote" maxlength="100" />
+      </view>
+
+      <view class="form-row form-row-col">
+        <text class="form-label">素颜照{{requirePhoto ? ' *' : ''}}（建议 3~5 张不同角度）</text>
+        <view class="photo-grid">
+          <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item">
+            <image class="photo-img" src="{{item}}" mode="aspectFill" />
+            <view class="photo-del" catchtap="onDeletePhoto" data-idx="{{index}}">×</view>
+          </view>
+          <view wx:if="{{form.photos.length < maxPhotos}}" class="photo-add" bindtap="onAddPhoto">
+            <text class="photo-add-icon">＋</text>
+            <text class="photo-add-text">{{form.photos.length}}/{{maxPhotos}}</text>
+          </view>
+        </view>
+        <view wx:if="{{requirePhoto && form.photos.length === 0}}" class="field-warn">
+          至少上传 1 张素颜照才能预约
+        </view>
+      </view>
+
+    </scroll-view>
+
+    <view wx:if="{{missingTip}}" class="missing-tip">{{missingTip}}</view>
+
+    <view class="modal-buttons">
+      <button wx:if="{{showCancel}}" class="btn-secondary" bindtap="onClose">取消</button>
+      <button class="btn-primary" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">
+        {{submitText}}
+      </button>
+    </view>
+
+  </view>
+</view>

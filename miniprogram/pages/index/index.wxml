@@ -90,10 +90,11 @@
         <text class="bd-date">{{item.date}} {{item.slotLabel}}</text>
         <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
       </view>
-      <view class="bd-info">姓名：{{item.name || '—'}}</view>
+      <view class="bd-info">昵称：{{item.name || '—'}}</view>
       <view wx:if="{{item.styleName}}" class="bd-info">妆造：{{item.styleName}} · ¥{{item.stylePrice}}</view>
       <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
       <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
+        <button class="btn-detail" size="mini" bindtap="openInfoDetail">详细信息</button>
         <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">取消预约</button>
       </view>
     </view>
@@ -106,8 +107,11 @@
     <view class="modal-title">预约 {{modalInfo}}</view>
 
     <view class="form-row">
-      <text class="form-label">姓名 *</text>
-      <input class="form-input" placeholder="请输入你的姓名" value="{{form.name}}" bindinput="onNameInput" maxlength="20" />
+      <text class="form-label">昵称</text>
+      <!-- 昵称取自个人中心（users.nickname），与个人中心始终一致 -->
+      <view class="form-static {{nickname ? '' : 'is-empty'}}">
+        {{ nickname || '未设置昵称，请先到个人中心填写' }}
+      </view>
     </view>
 
     <view class="form-row">
@@ -131,3 +135,20 @@
     </view>
   </view>
 </view>
+
+<!-- 个人信息表（与个人中心共用 info-form 组件）
+     infoMode=confirm：提交预约前的确认，必须填完整才能继续下单
+     infoMode=view：预约卡片上的“详细信息”，随时查看/更新，不卡完整性 -->
+<info-form
+  id="infoForm"
+  visible="{{showInfo}}"
+  info="{{info}}"
+  nickname="{{nickname}}"
+  title="{{infoMode === 'confirm' ? '确认个人信息' : '详细信息'}}"
+  hint="{{infoMode === 'confirm' ? '请确认信息已更新至最新，补全后才能提交预约' : '资料如有变化请及时更新'}}"
+  require-complete="{{infoMode === 'confirm'}}"
+  require-photo="{{infoMode === 'confirm'}}"
+  submit-text="{{infoMode === 'confirm' ? '确认并预约' : '保存'}}"
+  bind:close="closeInfo"
+  bind:save="onSaveInfo"
+/>

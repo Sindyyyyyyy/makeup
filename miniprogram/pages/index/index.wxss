@@ -235,6 +235,15 @@
 .bd-actions {
   margin-top: 16rpx;
   text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+.btn-detail {
+  background: #FFF0F4;
+  border: 2rpx solid #FFB6C8;
+  color: #C95B7C;
+  font-size: 24rpx;
 }
 .btn-cancel {
   background: #FFFFFF;
@@ -284,6 +293,19 @@
   padding: 16rpx;
   font-size: 28rpx;
   background: #FFF8FA;
+}
+/* 昵称：只读展示，取自个人中心 */
+.form-static {
+  border: 2rpx dashed #FFE0E8;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  background: #FFF8FA;
+  color: #4A4A4A;
+}
+.form-static.is-empty {
+  color: #C0A8B0;
+  font-size: 26rpx;
 }
 
 /* 妆造按钮组（dynamic 数量，CSS Grid 控制 1/2/3 列，超过 3 自动换行） */

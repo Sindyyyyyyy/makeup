@@ -9,6 +9,38 @@ const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21�
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
+// 预约前置条件：个人信息必须填写完整。
+// 前端同样有一份规则（miniprogram/utils/profileInfo.js），两边都要改。
+// 这里必须有：只靠前端校验等于没有校验，客户端能绕过。
+// 签名只收 nickname 与 info，不收整个文档——避免把文档当 info 传进来那种错法。
+function missingProfileFields(nickname, info) {
+  const i = info || {};
+  const missing = [];
+  if (!nickname) missing.push('昵称');
+  if (!i.gender) missing.push('性别');
+  if (!i.skinType) missing.push('肤质');
+  if (i.skinType === '敏感性' && !i.sensitiveLevel) missing.push('敏感性程度');
+  if (!i.hasAcne) missing.push('大面积爆痘');
+  if (!i.hasCosmeticSurgery) missing.push('整容/医美');
+  if (!i.hasAllergy) missing.push('化妆品/发品过敏');
+  if (i.hasAllergy === '有' && !i.allergyNote) missing.push('过敏说明');
+  if (!Array.isArray(i.photos) || i.photos.length < 1) missing.push('素颜照');
+  return missing;
+}
+
+// 读本人资料；集合或文档不存在时返回 null（区别于“没取到身份”）
+async function readUserDoc(openid) {
+  try {
+    const res = await db.collection('users').doc(openid).get();
+    return res.data || null;
+  } catch (err) {
+    const text = [err.errMsg, err.message].filter(Boolean).join(' | ');
+    // 集合/文档不存在都按“没有资料”处理，交给上层报缺项
+    if (/-502005|-502003/.test(text) || /not exist/i.test(text)) return null;
+    throw err;
+  }
+}
+
 function todayStr(offsetDays) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -72,9 +104,21 @@ exports.main = async (event, context) => {
   const cleanStyleName = String(styleName || '').trim();
   if (cleanStyleName.length > MAX.styleName) return { success: false, message: `妆造名称不能超过 ${MAX.styleName} 个字` };
   if (!cleanName) return { success: false, message: '请填写姓名' };
-  if (cleanName.length > MAX.name) return { success: false, message: `姓名不能超过 ${MAX.name} 个字` };
+  if (cleanName.length > MAX.name) return { success: false, message: `昵称不能超过 ${MAX.name} 个字` };
   if (cleanSkin.length > MAX.skinType) return { success: false, message: `肤质描述不能超过 ${MAX.skinType} 个字` };
   if (cleanRemark.length > MAX.remark) return { success: false, message: `备注不能超过 ${MAX.remark} 个字` };
+
+  // 个人信息必须完整（服务端强校验，与前端 utils/profileInfo.js 规则一致）
+  const userDoc = await readUserDoc(openid);
+  const missing = missingProfileFields(userDoc && userDoc.nickname, userDoc && userDoc.info);
+  if (missing.length) {
+    return {
+      success: false,
+      code: 'PROFILE_INCOMPLETE',
+      missing,
+      message: `请先补全个人信息：${missing.join('、')}`,
+    };
+  }
 
   // 同一时段不允许重复预约（pending / confirmed 都算占用）
   const dup = await db.collection('bookings').where({

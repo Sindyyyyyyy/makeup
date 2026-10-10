@@ -10,14 +10,14 @@ A WeChat Mini Program (微信小程序) for a makeup artist's appointment bookin
 
 Two halves that talk only through cloud functions:
 
-- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm, no custom components. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/admin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
+- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/admin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (currently only `infoForm`); a page must declare it in its own `.json` `usingComponents`. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
 
 ### Tab bar
 
 `app.json` defines a native two-item tabBar: `pages/index/index` (首页) and `pages/profile/profile` (个人中心). Tab pages are cached, so their `onLoad` runs only once — anything that must refresh on every visit belongs in `onShow` (`index` already reloads there). Navigate **between** tab pages with `wx.switchTab` only; `wx.navigateTo` fails on a tab page. The admin pages are not tabs and are reached from 个人中心 via `wx.navigateTo`.
 - **Cloud functions** (`cloudfunctions/<name>/index.js`) — one directory per function, each with its own `package.json` depending on `wx-server-sdk ~2.6.3`. Every function starts with `cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })`; the env ID is hardcoded once in `miniprogram/app.js` (`globalData.env`).
 
-There is no custom component anywhere in the project.
+There is no custom component other than `components/infoForm`.
 
 ### Cloud database collections
 
@@ -34,6 +34,18 @@ The `users` doc is the source of truth; `wx.setStorageSync('user_profile' / 'use
 Two `userProfile` actions write the doc, and they must stay separate: `save` (avatar + nickname) and `saveInfo` (the form). The form does **not** edit 昵称 — it shows the header's nickname as read-only text, because the two fields are the same `nickname` in the doc and letting both edit it invites drift. `openInfo` seeds `form.nickname` from the header so the display is never stale. All enum values are whitelisted server-side, and `photos` entries that are not `cloud://`/`http(s)://` URLs are dropped.
 
 **`doc().set()` replaces the whole document — never use it to update a single field here.** The header save originally did, which silently wiped the form. Both actions now read first (`readDoc`) and use `update({ data })` when the doc exists, falling back to `set` to create it. Also note: cloud-function-side `set`/`update`/`add` all require the `{ data: {...} }` wrapper; passing bare fields fails with `parameter.data should be object instead of undefined`.
+
+**昵称 is entered in exactly one place and read everywhere else.** It is set on `pages/profile` and nowhere else — `pages/profile`'s info modal and the booking modal on `pages/index` both render it as read-only text (`form-static`, dashed border) and read it via `userProfile` `{action:'get'}`, with `wx.getStorageSync('user_profile')` as the fast first paint. `pages/index` still *sends* it as `createBooking`'s `name` field so the admin booking list is unchanged; do not rename that field. An empty nickname blocks booking with 请先到个人中心设置昵称.
+
+### 个人信息表组件 (components/infoForm)
+
+`components/infoForm/` is the single copy of the form — used by `pages/profile` (title 个人信息, `require-complete=false`, so it saves partially-filled data) and by `pages/index` as the pre-booking confirmation (title 确认个人信息, `require-complete` + `require-photo`, submitText 确认并预约). Both register it in their page `.json` via `usingComponents`. The component owns editing and photo upload only; the parent decides where to store and what happens after (index saves, then calls `createBooking`). Custom components exist only here — don't add more casually.
+
+**Booking is gated on a complete profile, and the rule lives in two places that must agree:** `miniprogram/utils/profileInfo.js` (`missingFields(info, {requirePhoto})`) for the client, and `missingProfileFields(nickname, info)` in `cloudfunctions/createBooking/index.js` for the server. Required: 昵称, 性别, 肤质, 大面积爆痘, 整容/医美, 化妆品/发品过敏, plus conditional 敏感性程度 (only when 肤质=敏感性) and 过敏说明 (only when 过敏=有). For booking, 素颜照 needs ≥ 1; on 个人中心 photos stay optional. Both sides take `nickname` + `info` as separate args — never pass the whole user doc to the field-level helpers, that mistake reads as "everything missing".
+
+Client-only enforcement would be worthless here, so `createBooking` re-checks server-side and returns `{code:'PROFILE_INCOMPLETE', missing}`; the page responds by reloading the profile and reopening the form so the gaps are visible.
+
+`pages/index` renders the component in two modes via `data.infoMode`: `confirm` (before submitting a booking — complete + photo required, submitText 确认并预约, and saving continues into `createBooking`) and `view` (the 详细信息 button on each booking card — always open, never blocked on completeness, saves only). `openInfoDetail` is what switches to `view`; `submitBooking` switches to `confirm`. One component instance, mode chosen by the bound props.
 
 ### Booking slot lifecycle
 

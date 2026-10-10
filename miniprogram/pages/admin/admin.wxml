@@ -77,7 +77,7 @@
           <text class="bd-date">{{item.date}} {{item.slotLabel}}</text>
           <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
         </view>
-        <view class="bd-info">姓名：{{item.name || '—'}}</view>
+        <view class="bd-info">昵称：{{item.name || '—'}}</view>
         <view wx:if="{{item.styleName}}" class="bd-info">妆造：{{item.styleName}} · ¥{{item.stylePrice}}</view>
         <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
         <view class="bd-time">下单时间：{{item.createdAtText}}</view>

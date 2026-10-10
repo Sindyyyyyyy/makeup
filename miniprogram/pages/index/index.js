@@ -1,5 +1,6 @@
 // pages/index/index.js - 顾客预约主页 v1.1.0
 const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates } = require('../../utils/slots.js');
+const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
 
 Page({
   data: {
@@ -16,9 +17,12 @@ Page({
     modalSlot: '',
     modalStyles: [],
     selectedStyle: -1,
-    form: {
-      name: '',
-    },
+    // 与个人中心共用同一个昵称字段（users.nickname）
+    nickname: '',
+    // 预约前置的个人信息确认（infoMode: confirm=预约前确认, view=随时查看更新）
+    showInfo: false,
+    infoMode: '',
+    info: emptyForm(),
     submitting: false,
   },
 
@@ -147,6 +151,39 @@ Page({
   },
 
   // ============ 预约流程 ============
+  // 昵称与个人信息唯一来源是 users 文档（个人中心写入）：
+  // 先读本地缓存秒开，再拉云端校准
+  async loadProfile() {
+    const cached = wx.getStorageSync('user_profile');
+    const cachedInfo = wx.getStorageSync('user_info');
+    if (cached && cached.nickname && cached.nickname !== this.data.nickname) {
+      this.setData({ nickname: cached.nickname });
+    }
+    if (cachedInfo && typeof cachedInfo === 'object') {
+      this.setData({ info: toForm(cachedInfo, this.data.nickname) });
+    }
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'userProfile',
+        data: { action: 'get' },
+      });
+      const r = res.result;
+      if (!r || !r.success || !r.profile) return;
+      const nickname = r.profile.nickname || '';
+      if (nickname && nickname !== this.data.nickname) this.setData({ nickname });
+      const info = toForm(r.info, nickname);
+      this.setData({ info });
+      wx.setStorageSync('user_profile', {
+        avatarUrl: (r.profile && r.profile.avatarUrl) || (cached && cached.avatarUrl) || '',
+        nickname,
+      });
+      wx.setStorageSync('user_info', info);
+    } catch (err) {
+      // 拉不到就沿用缓存，不打扰顾客
+      console.warn('获取个人资料失败', err);
+    }
+  },
+
   onSlotTap(e) {
     const { date, slot, label, status, styles } = e.currentTarget.dataset;
     if (status !== 'available') return;
@@ -159,8 +196,8 @@ Page({
       modalInfo: `${date} ${label}`,
       modalStyles: list,
       selectedStyle: list.length === 1 ? 0 : -1,
-      form: { name: '' },
     });
+    this.loadProfile();
   },
 
   closeModal() {
@@ -173,16 +210,71 @@ Page({
     this.setData({ selectedStyle: Number(e.currentTarget.dataset.idx) });
   },
 
-  onNameInput(e) { this.setData({ 'form.name': e.detail.value }); },
-
+  // 第一步：不是直接下单，而是先弹个人信息表让顾客确认/补全
   async submitBooking() {
-    const { form, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
-    if (!form.name || !form.name.trim()) {
-      return wx.showToast({ title: '请输入姓名', icon: 'none' });
+    const { nickname, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
+    if (!(nickname || '').trim()) {
+      return wx.showToast({ title: '请先到个人中心设置昵称', icon: 'none' });
     }
     if (modalStyles.length > 0 && selectedStyle < 0) {
       return wx.showToast({ title: '请选择要画的妆造', icon: 'none' });
     }
+
+    await this.loadProfile();
+    const missing = missingFields(this.data.info, { requirePhoto: true });
+    if (missing.length) {
+      wx.showToast({ title: `还差：${missing.slice(0, 2).join('、')}`, icon: 'none' });
+    }
+    this.setData({ showInfo: true, infoMode: 'confirm' });
+  },
+
+  // 预约卡片上的“详细信息”：随时查看/更新最新个人信息，不涉及下单
+  async openInfoDetail() {
+    await this.loadProfile();
+    this.setData({ showInfo: true, infoMode: 'view' });
+  },
+
+  closeInfo() {
+    this.setData({ showInfo: false });
+  },
+
+  // 第二步：个人信息确认（并补全）通过后才真正下单
+  async onSaveInfo(e) {
+    const form = e.detail.info || {};
+    this.setData({ submitting: true });
+    const formCmp = this.selectComponent('#infoForm');
+    if (formCmp) formCmp.setSubmitting(true);
+    try {
+      const saveRes = await wx.cloud.callFunction({
+        name: 'userProfile',
+        data: { action: 'saveInfo', nickname: this.data.nickname, info: form },
+      });
+      if (!saveRes.result || !saveRes.result.success) {
+        console.error('保存个人信息失败：', saveRes.result);
+        wx.showToast({ title: (saveRes.result && saveRes.result.message) || '保存失败', icon: 'none' });
+        return;
+      }
+      const info = toForm(saveRes.result.info, this.data.nickname);
+      this.setData({ info });
+      wx.setStorageSync('user_info', info);
+      this.setData({ showInfo: false });
+      // 预约前确认才接着下单；单看详情只保存
+      if (this.data.infoMode === 'confirm') {
+        await this.doCreateBooking();
+      } else {
+        wx.showToast({ title: '已更新', icon: 'success' });
+      }
+    } catch (err) {
+      console.error('保存个人信息异常：', err);
+      wx.showToast({ title: (err && err.message) || '保存失败，请重试', icon: 'none' });
+    } finally {
+      if (formCmp) formCmp.setSubmitting(false);
+      this.setData({ submitting: false });
+    }
+  },
+
+  async doCreateBooking() {
+    const { nickname, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
     const style = selectedStyle >= 0 ? modalStyles[selectedStyle] : null;
 
     this.setData({ submitting: true });
@@ -192,12 +284,12 @@ Page({
         data: {
           date: modalDate,
           slot: modalSlot,
-          name: form.name.trim(),
+          name: (nickname || '').trim(),
           styleName: style ? style.name : '',
         },
       });
       if (res.result && res.result.success) {
-        wx.showToast({ title: '预约成功 ✓', icon: 'success' });
+        wx.showToast({ title: '预约成功', icon: 'success' });
         this.setData({ showModal: false });
         this.loadAll();
       } else if (res.result && res.result.code === 'NO_OPENID') {
@@ -207,6 +299,12 @@ Page({
           content: res.result.message,
           showCancel: false,
         });
+      } else if (res.result && res.result.code === 'PROFILE_INCOMPLETE') {
+        // 服务端判定资料不完整（可能资料刚被改过、或前后端规则不同步）：
+        // 重新拉一次云端，以云端为准把缺项回显在表里让用户当场补
+        await this.loadProfile();
+        this.setData({ showInfo: true });
+        wx.showToast({ title: '请先补全个人信息', icon: 'none' });
       } else {
         wx.showToast({ title: (res.result && res.result.message) || '提交失败', icon: 'none', duration: 2500 });
         this.loadSchedule();

@@ -49,98 +49,14 @@
 
 </view>
 
-<!-- 个人信息表弹窗 -->
-<view wx:if="{{showInfo}}" class="modal-mask" bindtap="closeInfo">
-  <view class="modal info-modal" catchtap="noop">
-
-    <view class="modal-title">个人信息</view>
-    <scroll-view scroll-y class="info-scroll">
-
-      <view class="form-row">
-        <text class="form-label">昵称</text>
-        <!-- 与顶部共用同一字段，这里只读展示，改昵称请回顶部 -->
-        <view class="form-static {{form.nickname ? '' : 'is-empty'}}">{{ form.nickname || '未设置昵称，请在上方设置' }}</view>
-      </view>
-
-      <view class="form-row">
-        <text class="form-label">性别</text>
-        <view class="chip-group">
-          <view wx:for="{{genderOptions}}" wx:key="*this"
-                class="chip {{form.gender === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="gender" data-value="{{item}}">{{item}}</view>
-        </view>
-      </view>
-
-      <view class="form-row">
-        <text class="form-label">肤质</text>
-        <view class="chip-group">
-          <view wx:for="{{skinOptions}}" wx:key="*this"
-                class="chip {{form.skinType === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="skinType" data-value="{{item}}">{{item}}</view>
-        </view>
-      </view>
-
-      <view wx:if="{{form.skinType === '敏感性'}}" class="form-row">
-        <text class="form-label">敏感性程度</text>
-        <input class="form-input" value="{{form.sensitiveLevel}}" placeholder="如：轻微泛红、刺痛"
-               bindinput="onFormInput" data-field="sensitiveLevel" maxlength="50" />
-      </view>
-
-      <view class="form-row">
-        <text class="form-label">大面积爆痘</text>
-        <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasAcne === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasAcne" data-value="{{item}}">{{item}}</view>
-        </view>
-      </view>
-
-      <view class="form-row">
-        <text class="form-label">整容/医美</text>
-        <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasCosmeticSurgery === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasCosmeticSurgery" data-value="{{item}}">{{item}}</view>
-        </view>
-      </view>
-
-      <view class="form-row">
-        <text class="form-label">化妆品/发品过敏</text>
-        <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasAllergy === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasAllergy" data-value="{{item}}">{{item}}</view>
-        </view>
-      </view>
-
-      <view wx:if="{{form.hasAllergy === '有'}}" class="form-row">
-        <text class="form-label">过敏说明</text>
-        <input class="form-input" value="{{form.allergyNote}}" placeholder="如：对某款粉底液过敏"
-               bindinput="onFormInput" data-field="allergyNote" maxlength="100" />
-      </view>
-
-      <view class="form-row form-row-col">
-        <text class="form-label">素颜照（选填，建议 3~5 张不同角度）</text>
-        <view class="photo-grid">
-          <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item">
-            <image class="photo-img" src="{{item}}" mode="aspectFill" />
-            <view class="photo-del" catchtap="onDeletePhoto" data-idx="{{index}}">×</view>
-          </view>
-          <view wx:if="{{form.photos.length < maxPhotos}}" class="photo-add" bindtap="onAddPhoto">
-            <text class="photo-add-icon">＋</text>
-            <text class="photo-add-text">{{form.photos.length}}/{{maxPhotos}}</text>
-          </view>
-        </view>
-      </view>
-
-    </scroll-view>
-
-    <view class="modal-buttons">
-      <button class="btn-secondary" bindtap="closeInfo">取消</button>
-      <button class="btn-primary" bindtap="onSaveInfo" loading="{{savingInfo}}" disabled="{{savingInfo}}">
-        保存
-      </button>
-    </view>
-
-  </view>
-</view>
+<!-- 个人信息表：组件形式，个人中心与首页预约前共用 -->
+<info-form
+  id="infoForm"
+  visible="{{showInfo}}"
+  info="{{info}}"
+  nickname="{{nickname}}"
+  title="个人信息"
+  submit-text="保存"
+  bind:close="closeInfo"
+  bind:save="onSaveInfo"
+/>
