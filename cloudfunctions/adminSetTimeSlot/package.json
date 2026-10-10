@@ -1,0 +1,9 @@
+{
+  "name": "adminSetTimeSlot",
+  "version": "1.0.0",
+  "description": "化妆师开放/关闭时段",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

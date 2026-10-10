@@ -1,0 +1,65 @@
+/* app.wxss - 全局样式 (温柔少女风) */
+page {
+  background: linear-gradient(180deg, #FFF5F7 0%, #FFFFFF 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  color: #4A4A4A;
+  font-size: 28rpx;
+}
+
+.container {
+  padding: 24rpx;
+  padding-bottom: 200rpx;
+  min-height: 100vh;
+}
+
+/* ============ 预约状态标签（全局，index / admin 共用）============ */
+.bd-status {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.status-pending {
+  background: #FFF3E0;
+  color: #E08600;
+}
+
+.status-confirmed {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.status-completed {
+  background: #E3F2FD;
+  color: #1565C0;
+}
+
+.status-rejected {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.status-cancelled {
+  background: #EEEEEE;
+  color: #757575;
+}
+
+/* 后台：加载更多 */
+.load-more {
+  text-align: center;
+  font-size: 26rpx;
+  color: #C95B7C;
+  padding: 24rpx 0;
+}
+
+.load-more.tip {
+  color: #B0B0B0;
+}
+
+/* 时段管理：过去的日期不可操作 */
+.slot-btn.disabled {
+  opacity: 0.45;
+}

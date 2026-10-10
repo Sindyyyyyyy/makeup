@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/admin/admin",
+    "pages/adminSlots/adminSlots"
+  ],
+  "window": {
+    "backgroundColor": "#FFF5F7",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#C95B7C",
+    "navigationBarTitleText": "我的化妆预约",
+    "navigationBarTextStyle": "white"
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

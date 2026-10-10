@@ -1,0 +1,132 @@
+<view class="container">
+  <!-- 顶部欢迎区 -->
+  <view class="header">
+    <text class="title">💄 预约化妆时间</text>
+    <text class="subtitle">胡鲁诺的化妆工作室 · 一对一专属服务</text>
+  </view>
+
+  <!-- 周导航 -->
+  <view class="week-nav">
+    <view class="nav-btn" bindtap="prevWeek">◀ 上周</view>
+    <view class="week-label">{{weekRange}}</view>
+    <view class="nav-btn" bindtap="nextWeek">下周 ▶</view>
+  </view>
+
+  <!-- 图例 -->
+  <view class="legend">
+    <view class="legend-item">
+      <view class="legend-dot dot-available"></view>
+      <text>可约</text>
+    </view>
+    <view class="legend-item">
+      <view class="legend-dot dot-locked"></view>
+      <text>不可预约</text>
+    </view>
+    <view class="legend-item">
+      <view class="legend-dot dot-taken"></view>
+      <text>已占</text>
+    </view>
+    <view class="legend-item">
+      <view class="legend-dot dot-mine"></view>
+      <text>我的</text>
+    </view>
+  </view>
+
+  <!-- 课程表 -->
+  <view class="schedule">
+    <!-- 表头 -->
+    <view class="row header-row">
+      <view class="cell time-label"></view>
+      <view wx:for="{{weekDates}}" wx:key="date" class="cell date-header {{item.isPast ? 'past' : ''}}">
+        <view class="dow">{{item.dow}}</view>
+        <view class="date">{{item.dateLabel}}</view>
+        <view wx:if="{{item.isToday}}" class="today-tag">今天</view>
+      </view>
+    </view>
+
+    <!-- 时段行 -->
+    <view wx:for="{{slots}}" wx:for-item="slot" wx:key="key" class="row slot-row">
+      <view class="cell time-label">
+        <view class="slot-name">{{slot.name}}</view>
+        <view class="slot-time">{{slot.time}}</view>
+      </view>
+      <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
+        <block wx:if="{{grid[slot._idx][date._idx].status === 'available'}}">
+          <view class="slot-btn available"
+                bindtap="onSlotTap"
+                data-date="{{date.date}}" data-slot="{{slot.key}}"
+                data-label="{{slot.time}}" data-status="available">
+            <text>可约</text>
+          </view>
+        </block>
+        <block wx:elif="{{grid[slot._idx][date._idx].status === 'mine'}}">
+          <view class="slot-btn mine">
+            <text>我的</text>
+          </view>
+        </block>
+        <block wx:elif="{{grid[slot._idx][date._idx].status === 'taken'}}">
+          <view class="slot-btn taken">
+            <text>已占</text>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="slot-btn locked">
+            <text>🔒 暂未开放</text>
+          </view>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <!-- 我的预约 -->
+  <view class="my-bookings">
+    <view class="section-title">我的预约</view>
+    <view wx:if="{{myBookings.length === 0}}" class="empty">
+      还没有预约哦，点击上方「可约」格子开始预约吧 🌸
+    </view>
+    <view wx:for="{{myBookings}}" wx:key="_id" class="booking-card">
+      <view class="bd-top">
+        <text class="bd-date">{{item.date}} {{item.slotLabel}}</text>
+        <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
+      </view>
+      <view class="bd-info">姓名：{{item.name || '—'}}</view>
+      <view class="bd-info">肤质：{{item.skinType || '—'}}</view>
+      <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
+      <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
+        <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">取消预约</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 化妆师入口 -->
+  <view class="admin-entry" bindtap="goAdmin">
+    <text>🌷 化妆师入口</text>
+  </view>
+</view>
+
+<!-- 预约弹窗 -->
+<view wx:if="{{showModal}}" class="modal-mask" bindtap="closeModal">
+  <view class="modal" catchtap="noop">
+    <view class="modal-title">预约 {{modalInfo}}</view>
+
+    <view class="form-row">
+      <text class="form-label">姓名 *</text>
+      <input class="form-input" placeholder="请输入你的姓名" value="{{form.name}}" bindinput="onNameInput" maxlength="20" />
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">肤质 *</text>
+      <textarea class="form-textarea" placeholder="请描述你的肤质（如：干性 / 油性 / 混合性 / 敏感肌等）" value="{{form.skinType}}" bindinput="onSkinTypeInput" maxlength="200" auto-height />
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">备注（选填）</text>
+      <textarea class="form-textarea" placeholder="有什么想特别告诉化妆师的吗？" value="{{form.remark}}" bindinput="onRemarkInput" maxlength="500" auto-height />
+    </view>
+
+    <view class="modal-buttons">
+      <button class="btn-secondary" bindtap="closeModal">取消</button>
+      <button class="btn-primary" bindtap="submitBooking" loading="{{submitting}}">提交预约</button>
+    </view>
+  </view>
+</view>

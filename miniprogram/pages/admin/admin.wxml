@@ -1,0 +1,92 @@
+<view class="container">
+
+  <!-- 未登录：显示密码框 -->
+  <block wx:if="{{!isAdmin}}">
+    <view class="login-card">
+      <view class="login-title">🌷 化妆师登录</view>
+      <view class="login-sub">请输入管理密码</view>
+      <input class="login-input" password="true" placeholder="管理密码"
+             value="{{passcode}}" bindinput="onPwdInput" />
+      <button class="btn-primary" bindtap="login" loading="{{loading}}">登录</button>
+    </view>
+  </block>
+
+  <!-- 已登录：显示后台 -->
+  <block wx:else>
+    <view class="admin-header">
+      <text class="admin-greet">胡鲁诺 下午好 ☀️</text>
+      <text class="logout" bindtap="logout">退出</text>
+    </view>
+
+    <!-- 功能入口 -->
+    <view class="entry-row">
+      <view class="entry-card" bindtap="goSlots">
+        <text class="entry-icon">🌷</text>
+        <view class="entry-text">
+          <view class="entry-title">时段管理</view>
+          <view class="entry-sub">开放/关闭预约时段</view>
+        </view>
+        <text class="entry-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 统计 -->
+    <view class="stats">
+      <view class="stat-card">
+        <view class="stat-num">{{stats.pending}}</view>
+        <view class="stat-label">待确认</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-num">{{stats.confirmed}}</view>
+        <view class="stat-label">已确认</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-num">{{stats.completed}}</view>
+        <view class="stat-label">已完成</view>
+      </view>
+    </view>
+
+    <!-- 筛选 -->
+    <view class="filter">
+      <view class="filter-label">筛选：</view>
+      <view class="filter-tabs">
+        <view class="tab {{filterStatus === 'all' ? 'active' : ''}}" data-status="all" bindtap="onFilter">全部</view>
+        <view class="tab {{filterStatus === 'pending' ? 'active' : ''}}" data-status="pending" bindtap="onFilter">待确认</view>
+        <view class="tab {{filterStatus === 'confirmed' ? 'active' : ''}}" data-status="confirmed" bindtap="onFilter">已确认</view>
+        <view class="tab {{filterStatus === 'completed' ? 'active' : ''}}" data-status="completed" bindtap="onFilter">已完成</view>
+        <view class="tab {{filterStatus === 'rejected' ? 'active' : ''}}" data-status="rejected" bindtap="onFilter">已拒绝</view>
+        <view class="tab {{filterStatus === 'cancelled' ? 'active' : ''}}" data-status="cancelled" bindtap="onFilter">已取消</view>
+      </view>
+    </view>
+
+    <!-- 列表 -->
+    <view class="booking-list">
+      <view wx:if="{{filtered.length === 0}}" class="empty">
+        暂无预约记录
+      </view>
+      <view wx:for="{{filtered}}" wx:key="_id" class="booking-card">
+        <view class="bd-top">
+          <text class="bd-date">{{item.date}} {{item.slotLabel}}</text>
+          <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
+        </view>
+        <view class="bd-info">姓名：{{item.name || '—'}}</view>
+        <view class="bd-info">肤质：{{item.skinType || '—'}}</view>
+        <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
+        <view class="bd-time">下单时间：{{item.createdAtText}}</view>
+
+        <view wx:if="{{item.status === 'pending'}}" class="bd-actions">
+          <button class="btn-secondary" size="mini" data-id="{{item._id}}" data-action="reject" bindtap="doAction">拒绝</button>
+          <button class="btn-primary" size="mini" data-id="{{item._id}}" data-action="confirm" bindtap="doAction">确认</button>
+        </view>
+        <view wx:if="{{item.status === 'confirmed'}}" class="bd-actions">
+          <button class="btn-primary" size="mini" data-id="{{item._id}}" data-action="complete" bindtap="doAction">标记完成</button>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{hasMore}}" class="load-more" bindtap="loadMore">加载更多</view>
+    <view wx:elif="{{bookings.length > 0}}" class="load-more tip">已加载全部</view>
+
+    <view class="footer-tip">下拉可刷新</view>
+  </block>
+</view>

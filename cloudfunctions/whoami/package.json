@@ -1,0 +1,9 @@
+{
+  "name": "whoami",
+  "version": "1.0.0",
+  "description": "诊断云函数 context，排查 OPENID 透传问题",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

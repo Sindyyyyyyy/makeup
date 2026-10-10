@@ -1,0 +1,63 @@
+<view class="container">
+  <!-- 顶部标题 -->
+  <view class="page-header">
+    <view class="back-btn" bindtap="goBack">‹ 返回</view>
+    <text class="page-title">时段管理</text>
+    <view style="width:80rpx"></view>
+  </view>
+
+  <!-- 未登录提示 -->
+  <view wx:if="{{!isAdmin}}" class="login-tip">
+    <text>请先在「化妆师后台」登录后再管理时段</text>
+  </view>
+
+  <!-- Week nav -->
+  <view class="week-nav">
+    <view class="nav-btn" bindtap="prevWeek">◀ 上周</view>
+    <view class="week-label">{{weekRange}}</view>
+    <view class="nav-btn" bindtap="nextWeek">下周 ▶</view>
+  </view>
+
+  <!-- 时段管理表格 -->
+  <view class="schedule">
+    <!-- 表头 -->
+    <view class="row header-row">
+      <view class="cell time-label"></view>
+      <view wx:for="{{weekDates}}" wx:key="date" class="cell date-header {{item.isPast ? 'past' : ''}}">
+        <view class="dow">{{item.dow}}</view>
+        <view class="date">{{item.dateLabel}}</view>
+        <view wx:if="{{item.isToday}}" class="today-tag">今天</view>
+      </view>
+    </view>
+
+    <!-- 时段行 -->
+    <view wx:for="{{slots}}" wx:for-item="slot" wx:key="key" class="row slot-row">
+      <view class="cell time-label">
+        <view class="slot-name">{{slot.name}}</view>
+        <view class="slot-time">{{slot.time}}</view>
+      </view>
+      <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
+        <view wx:if="{{grid[slot._idx][date._idx]}}"
+              class="slot-btn {{grid[slot._idx][date._idx].open ? (grid[slot._idx][date._idx].booked ? 'booked' : 'open') : 'closed'}} {{date.isPast ? 'disabled' : ''}}"
+              bindtap="onSlotToggle"
+              data-date="{{date.date}}"
+              data-slot="{{slot.key}}"
+              data-past="{{date.isPast}}"
+              data-open="{{grid[slot._idx][date._idx].open}}">
+          <text wx:if="{{grid[slot._idx][date._idx].open}}">
+            {{grid[slot._idx][date._idx].booked ? '已预约' : '开放中'}}
+          </text>
+          <text wx:else>点击开放</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 说明 -->
+  <view class="tips">
+    <view class="tips-title">💡 操作说明</view>
+    <view class="tips-item">· 点击格子可切换该时段开放/关闭状态</view>
+    <view class="tips-item">· 开放后顾客即可预约该时段</view>
+    <view class="tips-item">· 已有预约的时段无法关闭，请先在预约列表中处理</view>
+  </view>
+</view>

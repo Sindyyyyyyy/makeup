@@ -1,0 +1,9 @@
+{
+  "name": "adminUpdateBooking",
+  "version": "1.0.0",
+  "description": "化妆师确认/拒绝预约",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "adminListSlots",
+  "version": "1.0.0",
+  "description": "化妆师查看所有时段",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

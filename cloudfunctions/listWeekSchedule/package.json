@@ -1,0 +1,9 @@
+{
+  "name": "listWeekSchedule",
+  "version": "1.0.0",
+  "description": "查询指定日期区间的时段开放情况与本人预约",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
