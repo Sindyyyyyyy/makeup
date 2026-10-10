@@ -98,11 +98,6 @@
       </view>
     </view>
   </view>
-
-  <!-- 化妆师入口 -->
-  <view class="admin-entry" bindtap="goAdmin">
-    <text>🌷 化妆师入口</text>
-  </view>
 </view>
 
 <!-- 预约弹窗 -->

@@ -8,6 +8,9 @@ const SLOT_DEFS = [
 const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
 const SLOT_NAME_MAP = SLOT_NAMES;
 
+// 时段先后顺序，用于「越晚越靠上」这类排序
+const SLOT_ORDER = { morning: 0, afternoon: 1, evening: 2 };
+
 const DOW_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 const STATUS_TEXT = {
@@ -55,6 +58,7 @@ module.exports = {
   SLOT_DEFS,
   SLOT_NAMES,
   SLOT_NAME_MAP,
+  SLOT_ORDER,
   DOW_LABELS,
   STATUS_TEXT,
   formatDate,

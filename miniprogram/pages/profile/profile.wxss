@@ -1,0 +1,333 @@
+/* pages/profile/profile.wxss - 个人中心 (温柔少女风) */
+.container {
+  padding: 24rpx;
+  padding-bottom: 120rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 资料卡 */
+.card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 32rpx 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.card-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 24rpx;
+  letter-spacing: 2rpx;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+
+/* 头像选择器按钮：去掉 button 默认边框与背景 */
+.avatar-btn {
+  width: 140rpx;
+  height: 140rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.avatar-btn::after {
+  border: none;
+}
+
+.avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 70rpx;
+  display: block;
+}
+.avatar-empty {
+  background: linear-gradient(135deg, #FFF0F4 0%, #FFE4EC 100%);
+  border: 2rpx solid #FFB6C8;
+  overflow: hidden;
+}
+.avatar-ph {
+  width: 100%;
+  height: 100%;
+}
+
+.info-col {
+  flex: 1;
+  min-width: 0;
+}
+.nick-label {
+  font-size: 24rpx;
+  color: #B89C8A;
+  margin-bottom: 8rpx;
+}
+.nick-input {
+  background: #FFF5F7;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 20rpx;
+  padding: 16rpx 20rpx;
+  font-size: 28rpx;
+  color: #4A4A4A;
+  height: auto;
+}
+.tip {
+  font-size: 22rpx;
+  color: #B0A0A0;
+  margin-top: 12rpx;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  border: none;
+}
+.btn-primary[disabled] {
+  opacity: 0.6;
+  color: #FFFFFF !important;
+}
+/* 顶部“保存资料”按钮的上边距只作用于它自己，
+   不要挂在 .btn-primary 上——弹窗里的保存按钮会继承，两颗按钮就对不齐了 */
+.save-btn {
+  width: 100%;
+  margin-top: 32rpx;
+}
+
+/* 个人信息表入口 */
+.info-entry-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24rpx;
+  padding: 28rpx 24rpx;
+}
+.info-entry-left {
+  flex: 1;
+  min-width: 0;
+}
+.info-entry-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #4A4A4A;
+}
+.info-entry-sub {
+  font-size: 22rpx;
+  color: #B0A0A0;
+  margin-top: 8rpx;
+}
+.info-entry-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 16rpx;
+}
+.info-entry-state {
+  font-size: 26rpx;
+  color: #C95B7C;
+}
+.info-entry-arrow {
+  font-size: 36rpx;
+  color: #C9B8C0;
+  margin-left: 8rpx;
+  line-height: 1;
+}
+
+/* ============ 个人信息表弹窗 ============ */
+.modal-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #FFFFFF;
+  width: 90%;
+  max-width: 700rpx;
+  max-height: 86vh;
+  border-radius: 28rpx;
+  padding: 32rpx 28rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  text-align: center;
+  margin-bottom: 8rpx;
+  flex-shrink: 0;
+}
+/* 字段多，主体可滚动，按钮固定在底部 */
+.info-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: 62vh;
+  margin: 16rpx 0;
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+.form-row-col {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.form-label {
+  width: 200rpx;
+  font-size: 26rpx;
+  color: #4A4A4A;
+  flex-shrink: 0;
+}
+.form-row-col .form-label {
+  width: auto;
+  margin-bottom: 16rpx;
+}
+.form-input {
+  flex: 1;
+  background: #FFF5F7;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 16rpx;
+  padding: 14rpx 18rpx;
+  font-size: 26rpx;
+  color: #4A4A4A;
+  height: auto;
+}
+
+/* 只读字段（如昵称，与顶部共用同一个值） */
+.form-static {
+  flex: 1;
+  font-size: 26rpx;
+  color: #4A4A4A;
+  padding: 14rpx 0;
+}
+.form-static.is-empty {
+  color: #B0A0A0;
+  font-size: 24rpx;
+}
+
+/* 单选 chip */
+.chip-group {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.chip {
+  padding: 10rpx 24rpx;
+  border-radius: 28rpx;
+  background: #FFF5F7;
+  border: 2rpx solid #FFE0E8;
+  color: #8A7A80;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+.chip.on {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  border-color: transparent;
+  color: #FFFFFF;
+}
+
+/* 素颜照 */
+.photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+.photo-item {
+  position: relative;
+  width: 150rpx;
+  height: 150rpx;
+}
+.photo-img {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 16rpx;
+  display: block;
+}
+.photo-del {
+  position: absolute;
+  top: -12rpx;
+  right: -12rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 22rpx;
+  background: rgba(0, 0, 0, 0.55);
+  color: #FFFFFF;
+  font-size: 30rpx;
+  line-height: 42rpx;
+  text-align: center;
+}
+.photo-add {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 16rpx;
+  border: 2rpx dashed #FFB6C8;
+  background: #FFF8FA;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.photo-add-icon {
+  font-size: 48rpx;
+  color: #E895A8;
+  line-height: 1;
+}
+.photo-add-text {
+  font-size: 20rpx;
+  color: #B89C8A;
+  margin-top: 8rpx;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 24rpx;
+  flex-shrink: 0;
+}
+/* 两颗按钮必须完全一致：清掉 button 的默认 margin/上下 padding，
+   否则行高被撑开、底部会多出一条空白 */
+.modal-buttons button {
+  margin: 0;
+  padding: 0;
+  line-height: 72rpx;
+  height: 72rpx;
+}
+.btn-secondary {
+  background: #F5F5F5;
+  color: #999 !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  border: none;
+}
+/* 弹窗里的两颗按钮等宽；.btn-primary 的配色/圆角只用上面那一份定义 */
+.modal-buttons .btn-primary,
+.modal-buttons .btn-secondary {
+  flex: 1;
+}
+.modal-buttons .btn-primary[disabled] {
+  opacity: 0.6;
+}
+
+/* 化妆师入口 */
+.admin-entry {
+  text-align: center;
+  margin-top: 40rpx;
+  color: #B89C8A;
+  font-size: 24rpx;
+  padding: 16rpx;
+  letter-spacing: 4rpx;
+}

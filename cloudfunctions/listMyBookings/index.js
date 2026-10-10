@@ -20,8 +20,9 @@ exports.main = async (event, context) => {
       .where({
         _openid: openid,
       })
+      // 只按日期倒序取；同一天内的时段先后（晚上→下午→上午）由客户端按
+      // SLOT_ORDER 排，数据库 orderBy('slot') 是字母序，顺序不对
       .orderBy('date', 'desc')
-      .orderBy('slot', 'asc')
       .limit(50)
       .get();
 

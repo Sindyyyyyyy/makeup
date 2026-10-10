@@ -243,16 +243,6 @@
   font-size: 24rpx;
 }
 
-/* 化妆师入口 */
-.admin-entry {
-  text-align: center;
-  margin-top: 40rpx;
-  color: #B89C8A;
-  font-size: 24rpx;
-  padding: 16rpx;
-  letter-spacing: 4rpx;
-}
-
 /* 弹窗 */
 .modal-mask {
   position: fixed;

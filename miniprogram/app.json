@@ -1,10 +1,31 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/profile/profile",
     "pages/admin/admin",
     "pages/adminSlots/adminSlots",
     "pages/adminStyles/adminStyles"
   ],
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#C95B7C",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "images/tabbar/home.png",
+        "selectedIconPath": "images/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "个人中心",
+        "iconPath": "images/tabbar/usercenter.png",
+        "selectedIconPath": "images/tabbar/usercenter-active.png"
+      }
+    ]
+  },
   "window": {
     "backgroundColor": "#FFF5F7",
     "backgroundTextStyle": "light",

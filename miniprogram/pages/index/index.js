@@ -1,5 +1,5 @@
 // pages/index/index.js - 顾客预约主页 v1.1.0
-const { SLOT_DEFS, SLOT_NAME_MAP, STATUS_TEXT, computeWeekDates } = require('../../utils/slots.js');
+const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates } = require('../../utils/slots.js');
 
 Page({
   data: {
@@ -121,10 +121,20 @@ Page({
     try {
       const res = await wx.cloud.callFunction({ name: 'listMyBookings' });
       if (res.result && res.result.success) {
-        const bookings = (res.result.data || []).map(b => ({
-          ...b,
-          slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
-        }));
+        // 越晚的越靠上：日期倒序，同一天按晚上→下午→上午排。
+        // 不能靠数据库 orderBy('slot','desc')，那会按字母序排成 evening/morning/afternoon
+        const bookings = (res.result.data || [])
+          .slice()
+          .sort((a, b) => {
+            if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+            const ra = SLOT_ORDER[a.slot] == null ? -1 : SLOT_ORDER[a.slot];
+            const rb = SLOT_ORDER[b.slot] == null ? -1 : SLOT_ORDER[b.slot];
+            return rb - ra;
+          })
+          .map(b => ({
+            ...b,
+            slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
+          }));
         this.setData({ myBookings: bookings });
       } else {
         console.error('listMyBookings failed:', res.result);
@@ -235,9 +245,5 @@ Page({
         }
       },
     });
-  },
-
-  goAdmin() {
-    wx.navigateTo({ url: '/pages/admin/admin' });
   },
 });
