@@ -165,6 +165,13 @@
   color: #FFF;
   border: 2rpx solid #C95B7C;
 }
+.slot-btn.past,
+.slot-btn.expired {
+  background: #FAFAFA;
+  color: #CCC;
+  border: 2rpx dashed #E8E8E8;
+  font-size: 20rpx;
+}
 .slot-btn.locked {
   background: #F8F8F8;
   color: #AAA;

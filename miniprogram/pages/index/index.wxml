@@ -70,6 +70,16 @@
             <text>已占</text>
           </view>
         </block>
+        <block wx:elif="{{grid[slot._idx][date._idx].status === 'expired'}}">
+          <view class="slot-btn expired">
+            <text>已过时</text>
+          </view>
+        </block>
+        <block wx:elif="{{grid[slot._idx][date._idx].status === 'past'}}">
+          <view class="slot-btn past">
+            <text>🚫 时段已过</text>
+          </view>
+        </block>
         <block wx:else>
           <view class="slot-btn locked">
             <text>🔒 暂未开放</text>

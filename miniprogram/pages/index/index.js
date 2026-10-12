@@ -1,5 +1,5 @@
 // pages/index/index.js - 顾客预约主页 v1.1.0
-const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates } = require('../../utils/slots.js');
+const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
 
 Page({
@@ -97,9 +97,17 @@ Page({
           grid[s][d] = { status: 'mine', bookingId: myBkMap[key] };
           continue;
         }
-        // 已过去的日期一律不可预约
+        // 已过去的日期一律不可预约，标「时段已过」而不是「暂未开放」——
+// 那天只是过去了，和化妆师有没有开放是两回事
         if (day.isPast) {
-          grid[s][d] = { status: 'locked', slotState: null };
+          grid[s][d] = { status: 'past', slotState: null };
+          continue;
+        }
+
+        // 当天已过结束时刻的时段同样不可预约（如上午 10 点不能再约 8-11 点）。
+        // 只是前端体验，服务端 createBooking 还会再校验一次。
+        if (isSlotExpired(day.date, slotKey)) {
+          grid[s][d] = { status: 'expired', slotState: null };
           continue;
         }
 

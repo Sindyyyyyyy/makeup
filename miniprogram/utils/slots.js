@@ -21,6 +21,21 @@ const STATUS_TEXT = {
   completed: '已完成',
 };
 
+// 时段结束时刻（本地 24 小时制），上午 11 点后 / 下午 17 点后 / 晚上 21 点后
+// 前后端各有一份判定（前端 utils/slots.js，服务端 createBooking），规则必须一致
+const SLOT_END_HOUR = { morning: 11, afternoon: 17, evening: 21 };
+
+// 该时段是否已经过去（dateStr 为 YYYY-MM-DD；now 缺省取设备当前时间）
+function isSlotExpired(dateStr, slotKey, now) {
+  const endHour = SLOT_END_HOUR[slotKey];
+  if (endHour === undefined) return false;
+  const cur = now || new Date();
+  const today = formatDate(cur);
+  if (dateStr < today) return true;
+  if (dateStr > today) return false;
+  return cur.getHours() >= endHour;
+}
+
 function formatDate(d) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -59,8 +74,10 @@ module.exports = {
   SLOT_NAMES,
   SLOT_NAME_MAP,
   SLOT_ORDER,
+  SLOT_END_HOUR,
   DOW_LABELS,
   STATUS_TEXT,
   formatDate,
+  isSlotExpired,
   computeWeekDates,
 };

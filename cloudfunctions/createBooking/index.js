@@ -41,13 +41,27 @@ async function readUserDoc(openid) {
   }
 }
 
+// 时段结束时刻（本地 24 小时制）：上午 11 点后 / 下午 17 点后 / 晚上 21 点后
+// 与前端 utils/slots.js 的 SLOT_END_HOUR 是同一套规则，改一处要改两处
+const SLOT_END_HOUR = { morning: 11, afternoon: 17, evening: 21 };
+
+// 云函数运行时区不保证是东八区，统一按 UTC+8 计算「今天」和当前小时
+function beijingNow() {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return {
+    date: `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`,
+    hour: d.getUTCHours(),
+  };
+}
+
 function todayStr(offsetDays) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  if (offsetDays) d.setDate(d.getDate() + offsetDays);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mm}-${dd}`;
+  const now = beijingNow();
+  const [y, m, d] = now.date.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  if (offsetDays) base.setUTCDate(base.getUTCDate() + offsetDays);
+  const p = n => String(n).padStart(2, '0');
+  return `${base.getUTCFullYear()}-${p(base.getUTCMonth() + 1)}-${p(base.getUTCDate())}`;
 }
 
 // 兼容取 openid：优先官方 API cloud.getWXContext()，回退到 main 的 context 参数
@@ -96,6 +110,14 @@ exports.main = async (event, context) => {
   // 禁止预约过去的日期（服务端强校验，不依赖客户端时钟）
   if (date < todayStr(0)) {
     return { success: false, message: '不能预约已过去的日期' };
+  }
+
+  // 禁止预约当天已过结束时刻的时段（如上午 10 点不能再约 8-11 点）。
+  // 前端也会置灰，但客户端能绕过，必须服务端兜底。
+  const now = beijingNow();
+  const endHour = SLOT_END_HOUR[slot];
+  if (endHour !== undefined && date === now.date && now.hour >= endHour) {
+    return { success: false, message: `该时段（${SLOT_NAMES[slot]}）已过时，无法预约` };
   }
 
   const cleanName = String(name).trim();
