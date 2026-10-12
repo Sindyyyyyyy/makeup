@@ -4,7 +4,14 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 // ============ 过期预约自动结算 ============
+// 由 config.json 里的定时触发器每小时调用一次。
+// 这段逻辑原先被复制粘贴进 listWeekSchedule / listMyBookings / adminGetBookings
+// 三个「读取类」函数，导致每次读列表都要全表扫一遍 bookings（最坏 301 次 DB 往返，
+// 而 adminGetBookings 分页，翻一页就重扫一次）。改为定时触发后，热路径上的
+// 列表查询回到 1-2 次 DB 读。
+//
 // 时段结束时刻（本地 24 小时制）：上午 11 点后 / 下午 17 点后 / 晚上 21 点后
+// 与 adminUpdateBooking / createBooking 保持一致，改一处要改几处
 const SLOT_END_HOUR = { morning: 11, afternoon: 17, evening: 21 };
 const SWEEP_LIMIT = 100;
 
@@ -33,14 +40,30 @@ async function autoExpireOverdue() {
     return { expired: 0 };
   }
 
-  let expired = 0;
-  for (const b of res.data) {
+  // 先在内存里筛出真正过期的，省掉对不过期条目的写尝试
+  const overdueList = res.data.filter(b => {
     const endHour = SLOT_END_HOUR[b.slot];
-    if (endHour === undefined) continue;
-    const overdue = b.date < now.date ||
-      (b.date === now.date && now.hour >= endHour);
-    if (!overdue) continue;
+    if (endHour === undefined) return false;
+    return b.date < now.date || (b.date === now.date && now.hour >= endHour);
+  });
+  if (overdueList.length === 0) return { expired: 0 };
 
+  // 与 adminUpdateBooking 保持一致的时段副作用：
+  // 自动拒绝要释放时段占用，自动完成只打 done 标记。
+  // timeSlots 按 date 去重后再查——同一批过期预约常常落在同一天（一天 3 个时段），
+  // 原来每条预约各查一次，这里每日期只查一次。
+  const dates = Array.from(new Set(overdueList.map(b => b.date)));
+  const slotDocs = new Map();
+  try {
+    const slotRes = await db.collection('timeSlots').where({ date: db.command.in(dates) }).get();
+    (slotRes.data || []).forEach(d => slotDocs.set(d.date, d));
+  } catch (e) {
+    // 时段查不到就只改预约状态，不释放占用（人工介入即可），不整批失败
+    console.warn('autoExpireOverdue 查询时段失败，仅结算预约状态:', e.message);
+  }
+
+  // 各条预约之间互不影响，并发执行（原实现是完全串行的）
+  const results = await Promise.all(overdueList.map(async (b) => {
     const nextStatus = b.status === 'pending' ? 'rejected' : 'completed';
     let updated = 0;
     try {
@@ -52,66 +75,29 @@ async function autoExpireOverdue() {
       updated = upd.stats.updated;
     } catch (e) {
       console.warn('autoExpireOverdue 更新失败', b._id, e.message);
-      continue;
+      return 0;
     }
-    if (updated === 0) continue;
+    if (updated === 0) return 0;
 
-    // 与 adminUpdateBooking 保持一致的时段副作用：
-    // 自动拒绝要释放时段占用，自动完成只打 done 标记
-    try {
-      const slotRes = await db.collection('timeSlots').where({ date: b.date }).limit(1).get();
-      const slotDoc = slotRes.data && slotRes.data[0];
-      if (slotDoc) {
+    const slotDoc = slotDocs.get(b.date);
+    if (slotDoc) {
+      try {
         const data = nextStatus === 'rejected'
           ? { [`${b.slot}.booked`]: false, [`${b.slot}.done`]: false }
           : { [`${b.slot}.done`]: true };
         await db.collection('timeSlots').doc(slotDoc._id).update({ data });
+      } catch (e) {
+        console.warn('autoExpireOverdue 释放时段失败', b._id, e.message);
       }
-    } catch (e) {
-      console.warn('autoExpireOverdue 释放时段失败', b._id, e.message);
     }
-    expired++;
-  }
+    return 1;
+  }));
+
+  const expired = results.reduce((a, n) => a + n, 0);
   if (expired) console.log(`autoExpireOverdue: 本次自动结算 ${expired} 条`);
   return { expired };
 }
-// ================================================================
 
-exports.main = async (event, context) => {
-  let wxCtx = {};
-  try {
-    wxCtx = typeof cloud.getWXContext === 'function' ? cloud.getWXContext() : {};
-  } catch (e) {}
-  const openid = (wxCtx && wxCtx.OPENID) || (context && context.OPENID) || null;
-  console.log('listMyBookings called, openid:', openid, '| getWXContext:', JSON.stringify(wxCtx));
-
-  if (!openid) {
-    return { success: false, code: 'NO_OPENID', message: '未获取到用户身份' };
-  }
-
-  try {
-    // 先把已过时段的预约结算掉，顾客看到的就是最终状态
-    await autoExpireOverdue();
-
-    const res = await db.collection('bookings')
-      .where({
-        _openid: openid,
-      })
-      // 只按日期倒序取；同一天内的时段先后（晚上→下午→上午）由客户端按
-      // SLOT_ORDER 排，数据库 orderBy('slot') 是字母序，顺序不对
-      .orderBy('date', 'desc')
-      .limit(50)
-      .get();
-
-    return {
-      success: true,
-      data: res.data,
-    };
-  } catch (err) {
-    console.error('listMyBookings error:', err);
-    return {
-      success: false,
-      message: err.message,
-    };
-  }
+exports.main = async () => {
+  return await autoExpireOverdue();
 };

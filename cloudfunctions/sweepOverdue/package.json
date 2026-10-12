@@ -1,0 +1,9 @@
+{
+  "name": "sweepOverdue",
+  "version": "1.0.0",
+  "description": "定时结算过期预约（pending→rejected / confirmed→completed）并同步时段状态",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

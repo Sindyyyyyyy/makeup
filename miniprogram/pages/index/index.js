@@ -2,6 +2,9 @@
 const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
 
+// 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
+const LOAD_TTL = 60 * 1000;
+
 Page({
   data: {
     slots: SLOT_DEFS.map((s, i) => ({ ...s, _idx: i })),
@@ -28,13 +31,22 @@ Page({
 
   onLoad() {
     this.applyWeek(0);
+    // 页面级节流状态：_loadedAt 是上次成功拉取的本地时间戳，_dirty 表示
+    // 本地有过变更（下单/取消）需要下次进入时强制重拉
+    this._loadedAt = 0;
+    this._dirty = false;
+    this._profileFetchedAt = 0;
   },
 
   onShow() {
-    this.loadAll();
+    // tabBar 页面每次切回来都会触发 onShow。60 秒内且本地无变更时直接跳过，
+    // 避免反复切 tab 每次都打两次云函数。下拉刷新仍可强制拉取。
+    const fresh = Date.now() - (this._loadedAt || 0) < LOAD_TTL;
+    if (this._dirty || !this._loadedAt || !fresh) this.loadAll();
   },
 
   onPullDownRefresh() {
+    this._dirty = true; // 绕过 onShow 的 TTL
     this.loadAll().then(() => wx.stopPullDownRefresh());
   },
 
@@ -61,7 +73,7 @@ Page({
   // ============ 加载数据 ============
   async loadAll() {
     try {
-      await Promise.all([this.loadSchedule(), this.loadMyBookings()]);
+      await this.loadSchedule();
     } catch (e) {
       console.error('加载失败', e);
       wx.showToast({ title: '加载失败，请重试', icon: 'none' });
@@ -72,7 +84,9 @@ Page({
     const weekDates = this.data.weekDates;
     if (!weekDates.length) return;
 
-    // 统一走云函数，客户端不再直连数据库
+    // 统一走云函数，客户端不再直连数据库。
+    // 网格和「我的预约」卡片都由这一次调用的返回渲染——服务端会把本人预约
+    // 完整返回，不再单独调 listMyBookings（原来每次进首页是两次云函数调用）。
     const res = await wx.cloud.callFunction({
       name: 'listWeekSchedule',
       data: { dates: weekDates.map(d => d.date) },
@@ -83,8 +97,30 @@ Page({
 
     const tsMap = {};
     (res.result.timeSlots || []).forEach(r => { tsMap[r.date] = r; });
+
+    // 服务端返回的是本人全部预约（不限本周），网格只认本周且仍占用中的
+    const weekSet = new Set(weekDates.map(d => d.date));
     const myBkMap = {};
-    (res.result.myBookings || []).forEach(b => { myBkMap[`${b.date}_${b.slot}`] = b._id; });
+    (res.result.myBookings || []).forEach(b => {
+      if (!weekSet.has(b.date)) return;
+      if (b.status !== 'pending' && b.status !== 'confirmed') return;
+      myBkMap[`${b.date}_${b.slot}`] = b._id;
+    });
+
+    // 越晚的越靠上：日期倒序，同一天按晚上→下午→上午排。
+    // 不能靠数据库 orderBy('slot','desc')，那会按字母序排成 evening/morning/afternoon
+    const myBookings = (res.result.myBookings || [])
+      .slice()
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+        const ra = SLOT_ORDER[a.slot] == null ? -1 : SLOT_ORDER[a.slot];
+        const rb = SLOT_ORDER[b.slot] == null ? -1 : SLOT_ORDER[b.slot];
+        return rb - ra;
+      })
+      .map(b => ({
+        ...b,
+        slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
+      }));
 
     const grid = [[], [], []];
     for (let s = 0; s < SLOT_DEFS.length; s++) {
@@ -126,36 +162,9 @@ Page({
         }
       }
     }
-    this.setData({ grid });
-  },
-
-  async loadMyBookings() {
-    try {
-      const res = await wx.cloud.callFunction({ name: 'listMyBookings' });
-      if (res.result && res.result.success) {
-        // 越晚的越靠上：日期倒序，同一天按晚上→下午→上午排。
-        // 不能靠数据库 orderBy('slot','desc')，那会按字母序排成 evening/morning/afternoon
-        const bookings = (res.result.data || [])
-          .slice()
-          .sort((a, b) => {
-            if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-            const ra = SLOT_ORDER[a.slot] == null ? -1 : SLOT_ORDER[a.slot];
-            const rb = SLOT_ORDER[b.slot] == null ? -1 : SLOT_ORDER[b.slot];
-            return rb - ra;
-          })
-          .map(b => ({
-            ...b,
-            slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
-          }));
-        this.setData({ myBookings: bookings });
-      } else {
-        console.error('listMyBookings failed:', res.result);
-        this.setData({ myBookings: [] });
-      }
-    } catch (e) {
-      console.error('loadMyBookings error:', e);
-      this.setData({ myBookings: [] });
-    }
+    this.setData({ grid, myBookings });
+    this._loadedAt = Date.now();
+    this._dirty = false;
   },
 
   // ============ 预约流程 ============
@@ -170,6 +179,9 @@ Page({
     if (cachedInfo && typeof cachedInfo === 'object') {
       this.setData({ info: toForm(cachedInfo, this.data.nickname) });
     }
+    // 节流：点格子→提交预约这一串手势会连着调两次 loadProfile，
+    // TTL 内直接用本地缓存，不再发云函数。保存资料后时间戳会被清掉。
+    if (Date.now() - (this._profileFetchedAt || 0) < LOAD_TTL) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
@@ -177,6 +189,7 @@ Page({
       });
       const r = res.result;
       if (!r || !r.success || !r.profile) return;
+      this._profileFetchedAt = Date.now();
       const nickname = r.profile.nickname || '';
       if (nickname && nickname !== this.data.nickname) this.setData({ nickname });
       const info = toForm(r.info, nickname);
@@ -265,6 +278,8 @@ Page({
       const info = toForm(saveRes.result.info, this.data.nickname);
       this.setData({ info });
       wx.setStorageSync('user_info', info);
+      // 资料刚变过，下次读资料必须回云端
+      this._profileFetchedAt = 0;
       this.setData({ showInfo: false });
       // 预约前确认才接着下单；单看详情只保存
       if (this.data.infoMode === 'confirm') {

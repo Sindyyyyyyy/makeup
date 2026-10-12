@@ -28,8 +28,9 @@ Page({
   onLoad() {
     this.applyWeek(0);
     if (wx.getStorageSync(TOKEN_KEY)) {
+      // 妆造库不在这里拉：onShow 紧接着就会拉一次，两处都调会在每次进入
+      // 页面时白发一次 adminStyles 云函数请求
       this.setData({ isAdmin: true });
-      this.loadStyleLibrary();
     }
   },
 

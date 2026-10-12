@@ -47,6 +47,7 @@ exports.main = async (event) => {
     const res = await db.collection('timeSlots')
       .where(where)
       .orderBy('date', 'asc')
+      .limit(100) // 日期区间理论上无界，兜一个上限防止响应体积失控
       .get();
 
     return { success: true, slots: res.data };
