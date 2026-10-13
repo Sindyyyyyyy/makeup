@@ -115,6 +115,10 @@
   width: 150rpx;
   height: 150rpx;
 }
+/* 可点开预览，给个按压反馈 */
+.photo-item:active {
+  opacity: 0.7;
+}
 .photo-img {
   width: 150rpx;
   height: 150rpx;

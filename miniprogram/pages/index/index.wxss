@@ -407,3 +407,38 @@
   font-size: 28rpx;
   border: none;
 }
+
+/* 预约成功 · 注意事项弹窗 */
+.notice-mask {
+  /* info-form 用了 200，本弹窗在它之上 */
+  z-index: 300;
+  padding: 32rpx 0;
+}
+.notice-modal {
+  max-width: 620rpx;
+}
+.notice-subtitle {
+  font-size: 26rpx;
+  color: #999;
+  text-align: center;
+  margin-bottom: 20rpx;
+}
+.notice-scroll {
+  max-height: 52vh;
+  border-radius: 12rpx;
+  background: #FFF7FA;
+}
+.notice-img {
+  display: block;
+  width: 100%;
+  border-radius: 12rpx;
+}
+.notice-tip {
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  color: #999;
+  text-align: center;
+}
+.notice-ok {
+  margin-top: 24rpx;
+}

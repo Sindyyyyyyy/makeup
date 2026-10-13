@@ -164,6 +164,22 @@
   bind:close="closeInfo"
   bind:save="onSaveInfo"
 />
+
+<!-- 预约成功 · 化妆注意事项
+     show-menu-by-longpress 是长按保存到相册的关键：只有网络图片（云函数换来的 https
+     临时链接）才生效，打包在包内的兜底图长按不会有菜单。scroll-view 限高，否则长图
+     在小屏上根本看不全。 -->
+<view wx:if="{{showNotice}}" class="modal-mask notice-mask" bindtap="closeNotice">
+  <view class="modal notice-modal" catchtap="noop">
+    <view class="modal-title">预约成功</view>
+    <view class="notice-subtitle">请留意以下化妆注意事项</view>
+    <scroll-view class="notice-scroll" scroll-y="true">
+      <image class="notice-img" src="{{noticeImg}}" mode="widthFix" show-menu-by-longpress="{{true}}" />
+    </scroll-view>
+    <view class="notice-tip">长按上方图片可保存到相册</view>
+    <button class="btn-primary notice-ok" bindtap="closeNotice">我知道了</button>
+  </view>
+</view>
 </block>
 
 <!-- 化妆师后台（adminMode=true 时渲染，与顾客端互斥）

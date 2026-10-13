@@ -32,6 +32,10 @@ Page({
     infoMode: '',
     info: emptyForm(),
     submitting: false,
+    // 预约成功后的「注意事项」图。noticeImg 默认指向包内压缩图兜底，
+    // 云函数拿到 https 临时链接后会替换成可长按保存的那份
+    showNotice: false,
+    noticeImg: '/images/notice.jpg',
   },
 
   onLoad() {
@@ -266,6 +270,23 @@ Page({
 
   noop() {},
 
+  // 预约成功后弹注意事项图。临时链接约 2 小时过期，所以每次弹出都重新取一次；
+  // 取不到就退回包内那张兜底图（本地图长按存不了，但至少不会白框）。
+  async openNotice() {
+    try {
+      const res = await wx.cloud.callFunction({ name: 'getNoticeImage' });
+      const url = res && res.result && res.result.success ? res.result.url : '';
+      if (url) this.setData({ noticeImg: url });
+    } catch (err) {
+      console.error('getNoticeImage failed:', err);
+    }
+    this.setData({ showNotice: true });
+  },
+
+  closeNotice() {
+    this.setData({ showNotice: false });
+  },
+
   onSelectStyle(e) {
     this.setData({ selectedStyle: Number(e.currentTarget.dataset.idx) });
   },
@@ -351,8 +372,8 @@ Page({
         },
       });
       if (res.result && res.result.success) {
-        wx.showToast({ title: '预约成功', icon: 'success' });
         this.setData({ showModal: false });
+        this.openNotice();
         this.loadAll();
       } else if (res.result && res.result.code === 'NO_OPENID') {
         // 服务端拿不到身份，长文本用弹窗展示，避免 toast 截断

@@ -74,7 +74,8 @@
       <view class="form-row form-row-col">
         <text class="form-label">素颜照{{requirePhoto && !readonly ? ' *' : ''}}（{{form.photos.length}}/{{maxPhotos}}）</text>
         <view class="photo-grid">
-          <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item">
+          <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item"
+                bindtap="onPreviewPhoto" data-idx="{{index}}">
             <image class="photo-img" src="{{item}}" mode="aspectFill" />
             <view wx:if="{{!readonly}}" class="photo-del" catchtap="onDeletePhoto" data-idx="{{index}}">×</view>
           </view>

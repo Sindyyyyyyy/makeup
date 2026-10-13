@@ -122,6 +122,18 @@ Component({
       this.setData({ 'form.photos': photos, missingTip: '' });
     },
 
+    // 点图放大：走系统图片预览，支持左右滑动和双指缩放。
+    // readonly 下同样可用——后台看顾客素颜照正是要放大看细节。
+    onPreviewPhoto(e) {
+      const photos = this.data.form.photos;
+      if (!photos.length) return;
+      const idx = e.currentTarget.dataset.idx;
+      wx.previewImage({
+        urls: photos,
+        current: photos[idx],
+      });
+    },
+
     onSubmit() {
       if (this.data.submitting || this.data.readonly) return;
       const form = this.data.form;

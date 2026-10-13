@@ -1,0 +1,9 @@
+{
+  "name": "getNoticeImage",
+  "version": "1.0.0",
+  "description": "下发化妆注意事项图片的 https 临时链接",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
