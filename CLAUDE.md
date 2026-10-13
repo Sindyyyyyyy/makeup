@@ -106,6 +106,39 @@ Concurrency: `createBooking` claims a slot with a conditional single-document up
 
 Per-slot 妆造 options and prices are configured by the admin in `adminSlots` and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
 
+### 订阅消息 (subscribe message)
+
+一次性订阅，三条链路：化妆师确认/拒绝 → 顾客，新预约 → 化妆师，顾客取消 → 化妆师。标记完成不通知。**长期订阅不可用**（仅公共服务类目开放），所以授权必须散落在真实手势上。
+
+| 收件人 | 触发 | 模板 |
+|---|---|---|
+| 顾客 | `adminUpdateBooking` 的 `confirmed`/`rejected` | 化妆师通过／拒绝（`date2` 预约时间 / `thing3` 预约项目 / `phrase5` 预约结果 / `thing6` 温馨提示） |
+| 化妆师 | `createBooking` 成功 | 顾客预约（`thing20` 预约人 / `time2` 预约时间 / `thing7` 预约项目 / `thing9` 温馨提示） |
+| 化妆师 | `cancelBooking` 成功 | 顾客取消预约（`name1` 姓名 / `time4` 原预约时间 / `thing2` 原预约项目 / `thing13` 温馨提醒） |
+
+**三个模板都没有单独的「时段」字段，时段是搭在预约时间里的** —— `date`/`time` 两种类型都接受 `2026-10-20 09:30:00` 这种带时分的格式（平台示例即如此），所以「预约时间」一个字段就同时表达了日期和具体时段，不必再加字段。
+
+注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），整段塞进时间字段会被判非法，所以三个云函数都只取**开始**时间，拼成 `YYYY-MM-DD HH:mm:00`。开始时间的来源各不一样：`adminUpdateBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，时段定义改了自动跟着变），`createBooking`/`cancelBooking` 从 `SLOT_NAMES` 切。缺时段时退化成纯日期，消息仍能发出去。
+
+**授权点**（`wx.requestSubscribeMessage` 必须由用户手势触发，放进 load/onShow/网络回调会报 `can only be invoked by user TAP action`）：
+
+- 顾客：`pages/index` 的 `onSaveInfo()` **第一行**，门控 `infoMode === 'confirm'`。不在 `doCreateBooking` 里请求 —— 那里已跨过一次 `await userProfile` 的异步边界，会丢手势上下文。也不在 `submitBooking` 里 —— 那里紧接着弹信息表，顾客可能放弃预约，授权就浪费了。
+- 化妆师：`adminPanel` 里独立的「开启提醒」按钮（B、C 同一个弹窗一次授权）。**不要**搭 `doAction` 的顺风车：那里刚弹过 `wx.showModal`，dismiss 动画未结束就压系统弹窗，iOS 有概率吞手势；且点「确认」问「取消通知」语义错配，用户会习惯性拒掉额度。
+
+**额度语义：1 次授权 = 1 条消息**，可累积，额度为 0 时发送返回 `43101`。顾客侧精确匹配——`ACTION_MAP` 里 `confirm`/`reject` 的 `from` 都只含 `pending`，确认后再拒绝会被状态机挡掉，一次预约最多触发一次模板2。化妆师点一次「开启」顶一条，所以按钮文案是「开启 / 再开启一次」。**多个 admin 时额度是各自独立的** —— 每台手机都要各自点过一次「开启提醒」才收得到，她没点过就只是她那个 `43101`。`notifyEnabled` 只是 UI 提示，**不是服务端状态**，服务端不查它。
+
+**模板 ID 在三处云函数各抄一份，不共享模块** —— `miniprogram/utils/notify.js`（客户端）+ `createBooking` + `adminUpdateBooking` + `cancelBooking`（`miniprogram/utils` 不在云函数文件系统里，反之亦然；共享只能靠人工复制进每个部署目录，漏复制 = 加载期崩溃）。字段的 key（`thing20`/`time2`/`phrase5`/…）必须与公众平台模板详情页**逐字一致**，key 错了消息静默发不出去。`thing` 上限 20 字、`phrase` 纯中文且 ≤5 字，所以「已确认」「已拒绝」都能放进 `phrase5`。`thing6` 温馨提示按结果分派两条（确认「预约已确认，请准时到店」11 字 / 拒绝「化妆师临时有事，具体原因请与化妆师联系」19 字，都未触顶）；化妆师侧的 `thing9`/`thing13` 同理是固定文案。**都不要塞 `booking.remark`**（上限 500 字会撑爆 20）。
+
+**`sendSubscribeMessage()` 永远不抛** —— 这是「通知失败不影响预约」的**结构性保证**，不是偷懒：三个云函数各自被一个大 try/catch 包着（`createBooking` 里那个 catch 还负责 `add()` 失败时回滚时段占用），helper 一旦被换成裸的 `cloud.openapi.subscribeMessage.send(...)`，发送失败就会冒泡进那个 catch，把一条**已成功的**预约报成「服务器错误」。调用方可以无脑 `await`。
+
+化妆师 openid 由 `findArtistOpenids()` 实时查 `users.where({admin: true})` 得到，**不缓存** —— `adminLogout` 把 `admin` 置 false 后缓存副本会继续给她发消息。这个字段只在这里被服务端读取，绝不进 `userProfile` 的白名单或 `get` 响应；openid 绝不返回给客户端。
+
+**可以有多个 admin**：多个微信号都输过密码就会有多条 `admin: true`，**她们都要收到通知** —— 所以这里返回数组、**不能 `limit(1)`**（那会随机只通知其中一个，其中一人永远收不到）。`data` 只拼一次，在 `touser` 上分叉后用 `Promise.all` 并发发；因为 `sendSubscribeMessage` 永不抛，其中一人没授权（`43101`）不影响其他人收到。`limit(100)` 只是防呆，另做了 `_openid` 去重防止脏数据导致同一人收两条。
+
+三个云函数目录各有一份 `config.json` 声明 `permissions.openapi: ["subscribeMessage.send"]`。**`config.json` 只在上传时被读取**（必须选「上传并部署：云端安装依赖」），且权限有**约 10 分钟服务端缓存** —— 改完立刻测报「无权限」是正常的，别在这段时间里 debug。
+
+**排障入口：云开发控制台 → 云函数 → 日志 → 搜 `subscribeMessage`。** 用户在公众平台改了模板是头号故障源（症状是通知全收不到但预约功能完全正常，且**永远不会暴露给用户**，只出现在日志里）：删模板 → `40037`；改字段名 → key 变了 → `47003`；加字段 → 没传 → `47004`（**整条发不出去**）；`code=43101` 则是额度用尽/没授权，业务正常不用改代码；`-501001` 是 config.json 权限没生效。DevTools 模拟器不弹真授权窗，控制台「云端测试」调 `subscribeMessage.send` 返回 `-501001` 是**预期的假阳性**（不带小程序云调用上下文）——端到端只能真机验证。
+
 ### Auth model
 
 - **Customers**: identity is the server-side `OPENID` only, via `cloud.getWXContext()` with a fallback to the `context` arg of `exports.main`. It is never accepted from `event`. Ownership is enforced server-side (`booking._openid !== openid`). The shared helper is copy-pasted into each function rather than shared — keep that convention.

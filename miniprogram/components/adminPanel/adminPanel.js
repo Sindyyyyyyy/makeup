@@ -7,6 +7,7 @@
 // 调本组件的 loadBookings()/refresh()。
 const { SLOT_NAME_MAP, STATUS_TEXT } = require('../../utils/slots.js');
 const { isLoggedIn, getToken, clearAdmin, refreshAdminToken } = require('../../utils/role.js');
+const { TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED, requestSubscribe } = require('../../utils/notify.js');
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -42,6 +43,9 @@ Component({
     userInfo: null,
     userNickname: '',
     userInfoHint: '',
+    // 订阅消息（一次性）的 UI 提示。**不是服务端状态**——服务端不查它，
+    // 能不能发出去取决于微信侧的额度，这里只是「她点过没有」的展示。
+    notifyEnabled: false,
   },
 
   // 只校验本地是否存在令牌，真正的鉴权在云函数。
@@ -49,6 +53,7 @@ Component({
   // 去问一次服务端，它能用免密重签补回来。
   ready() {
     this.setData({ isAdmin: isLoggedIn() });
+    this.setData({ notifyEnabled: !!wx.getStorageSync('notify_artist') });
     // _minting 是实例字段不是 data：ready() 里已经在 setData，再放 data 会和首次渲染竞争
     this.ensureSession().then((ok) => {
       if (ok) this.loadBookings();
@@ -285,6 +290,26 @@ Component({
 
     closeUserProfile() {
       this.setData({ showUserProfile: false });
+    },
+
+    // 订阅消息：点一次 +1 条「新预约提醒」额度（两个模板在同一个弹窗里一次授权，
+    // tmplIds 上限 3 个，不需要分两次打扰）。
+    //
+    // 为什么用显式按钮，而不是搭 doAction 的顺风车：
+    //   ① doAction 第一件事就是 wx.showModal，它的 dismiss 动画还没结束就压上一个
+    //      系统订阅弹窗，iOS 上有概率被吞掉手势直接 fail；
+    //   ② 点「确认」却问「预约取消通知」语义对不上，用户会习惯性点拒绝，把额度拒掉；
+    //   ③ 订阅失败容易被下面 doAction 的 toast 逻辑混进「操作失败」分支。
+    async enableNotify() {
+      const res = await requestSubscribe([TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED]);
+      const accepted = !!(res && res[TPL_ARTIST_NEW] === 'accept');
+      if (!accepted) {
+        // 拒绝不影响后台任何功能，如实说明但不要表现得像故障
+        return wx.showToast({ title: '未开启通知，不影响后台使用', icon: 'none' });
+      }
+      wx.setStorageSync('notify_artist', true);
+      this.setData({ notifyEnabled: true });
+      wx.showToast({ title: '已开启', icon: 'success' });
     },
 
     async doAction(e) {

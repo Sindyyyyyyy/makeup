@@ -9,6 +9,89 @@ const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: 
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
+// ============ 订阅消息（按仓库约定各抄一份，不共享模块）============
+// 模板 ID 在 公众平台 → 订阅消息 → 我的模板 申请后填写。
+// 与 miniprogram/utils/notify.js 保持一致，改一处要改三处云函数。
+const TPL_ARTIST_NEW = 'OE7Sj4rWPKUfCvreIfadWG5r3SPAmxGjgGGhJt9WG4E';  // 顾客新预约 → 化妆师
+
+// 联调期填 'developer'（走体验版），上线前改成 'formal' 并重新部署。
+const MINI_STATE = 'developer';
+
+const PAGE_HOME = 'pages/index/index'; // 无前导斜杠，须与 app.json 注册项逐字一致
+
+// thing 类型上限 20 字，超了整条消息发不出去（47003）
+function clip(s, n) {
+  return String(s == null ? '' : s).slice(0, n);
+}
+
+// 模板1的 time2 字段是「预约时间」，type 是 time，要带时分。
+// 时段文档里存的是**区间**（'09:30-11:30'），整段塞进去会被平台判为非法，
+// 所以只取开始时间。开始时间直接从 SLOT_NAMES 切出来，不另抄一份常量，
+// 改时段定义时自动跟着变。缺时段就退化成纯日期，仍然能发出去。
+function fmtTime(date, slot) {
+  const start = (SLOT_NAMES[slot] || '').split('-')[0] || '';
+  if (!start) return String(date || '');
+  return `${date} ${start}:00`;
+}
+
+// 发订阅消息。永远不抛：43101（没订阅/额度用尽）是业务常态。
+// 调用方可以直接 await，失败只拿到 false —— 下单流程毫发无损。
+// ⚠️ 这个「永不抛」是刻意的结构性保证：本函数整个 main 被一个大 try/catch
+// 包着（下面还有 add() 失败要回滚时段占用的 rethrow），helper 一旦被换成裸的
+// cloud.openapi.subscribeMessage.send(...)，发送失败就会冒泡进那个 catch，
+// 把一条**已经下单成功**的预约报成「服务器错误」。
+// 排障入口是下面那两条日志（控制台 → 云函数 → createBooking → 日志 → 搜
+// subscribeMessage）。常见 code：43101 没订阅/额度用尽（最常见，不用管）、
+// 47003/47004/47006 模板字段对不上、40037 模板 ID 错、41030 page 路径错、
+// -501001 config.json 权限没生效（改完要等约 10 分钟缓存过期）。
+async function sendSubscribeMessage(opts) {
+  const { touser, templateId, page, data } = opts || {};
+  if (!touser || !templateId) return false;
+  try {
+    const res = await cloud.openapi.subscribeMessage.send({
+      touser,
+      templateId,
+      page,
+      miniprogramState: MINI_STATE,
+      data,
+    });
+    // 成功日志是故意留的：没有它无法区分「没触发」和「触发但被拒」
+    console.log('subscribeMessage ok', templateId, JSON.stringify(res || {}));
+    return true;
+  } catch (err) {
+    const code = (err && (err.errCode || err.errcode)) || '';
+    const text = [err && err.errMsg, err && err.message].filter(Boolean).join(' | ');
+    console.warn('subscribeMessage 跳过', 'code=' + code, 'touser=' + touser, text);
+    return false;
+  }
+}
+
+// 化妆师的 openid 列表：users.admin 是「谁是化妆师」的唯一真相来源，
+// 实时查而不是缓存 —— adminLogout 把 admin 置 false 后，缓存副本会继续给她发消息
+// 而 users.admin 不会。users 文档的 key 就是 openid 本身（doc(openid)），
+// 不需要额外字段来记谁是谁。
+//
+// 返回**数组**而不是单个：可以有多个 admin（多个微信号都输过密码），
+// 她们都要收到通知，所以这里不能 limit(1) —— 那会随机只通知其中一个。
+async function findArtistOpenids() {
+  try {
+    const res = await db.collection('users')
+      .where({ admin: true })
+      .field({ _openid: true })
+      .limit(100)   // 上限只是防呆；一个理发店的化妆师数远小于 100
+      .get();
+    // 去重：万一集合里有 _openid 重复的脏数据，同一个人会收到两条
+    const ids = (res.data || []).map(d => d && d._openid).filter(Boolean);
+    return Array.from(new Set(ids));
+  } catch (err) {
+    // users 集合必须手动在控制台建，不存在就是 -502005 —— 跳过发送，不阻断下单
+    const text = [err && err.errMsg, err && err.message].filter(Boolean).join(' | ');
+    console.warn('查询化妆师 openid 失败：', text);
+    return [];
+  }
+}
+// ================================================================
+
 // 预约前置条件：个人信息必须填写完整。
 // 前端同样有一份规则（miniprogram/utils/profileInfo.js），两边都要改。
 // 这里必须有：只靠前端校验等于没有校验，客户端能绕过。
@@ -121,7 +204,9 @@ exports.main = async (event, context) => {
   }
 
   const cleanName = String(name).trim();
-  const cleanSkin = String(skinType).trim();
+  // 注意 || ''：客户端表单只传 name 和 styleName，skinType 缺失时
+  // String(undefined) 会得到字面量 "undefined" 并落库（已修过的潜伏 bug）
+  const cleanSkin = String(skinType || '').trim();
   const cleanRemark = String(remark || '').trim();
   const cleanStyleName = String(styleName || '').trim();
   if (cleanStyleName.length > MAX.styleName) return { success: false, message: `妆造名称不能超过 ${MAX.styleName} 个字` };
@@ -215,6 +300,34 @@ exports.main = async (event, context) => {
         data: { [`${slot}.booked`]: false }
       });
       throw addErr;
+    }
+
+    // 新预约提醒（模板 B → 化妆师）。
+    //
+    // 位置：在 add() 成功**之后**发 —— 预约已落库，通知只是附带的；发送失败也绝
+    // 不能回滚时段占用（下面那个 catch 里的回滚逻辑因此保持原样、零风险）。
+    // sendSubscribeMessage 内部吞掉全部异常，这里失败也只会拿到 false。
+    //
+    // 额度：每次点「开启」+1，化妆师点几次就顶几次。顾客每次下单授权的是
+    // 「化妆师通过／拒绝」模板，与本模板互不干扰。
+    const artists = await findArtistOpenids();
+    if (artists.length) {
+      // 多人共用同一份 data，只在 touser 上分叉 —— 字段拼装一次即可
+      const data = {
+        // key 与公众平台模板详情页一一对应，改模板要改这里
+        thing20: { value: clip(cleanName, 20) },  // 预约人
+        time2: { value: clip(fmtTime(date, slot), 32) },  // 预约时间
+        thing7: { value: clip(finalStyleName || '化妆预约', 20) },  // 预约项目
+        thing9: { value: clip('新预约待确认，请及时处理', 20) },  // 温馨提示
+      };
+      // 并发发给每一个 admin。sendSubscribeMessage 永不抛，所以其中一个人失败
+      // （比如她从没授权过 → 43101）不影响其他人收到，也不会冒泡进外层 catch。
+      await Promise.all(artists.map(touser => sendSubscribeMessage({
+        touser,
+        templateId: TPL_ARTIST_NEW,
+        page: PAGE_HOME,
+        data,
+      })));
     }
 
     return {

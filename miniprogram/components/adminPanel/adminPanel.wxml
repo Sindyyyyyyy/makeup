@@ -39,6 +39,16 @@
       </view>
     </view>
 
+    <!-- 订阅消息：一次性订阅，每次点「开启」+1 条额度，额度会累积。
+         新预约 / 取消 都靠它，顾客那边取消了才会用到，所以不点也没有副作用。 -->
+    <view class="notify-row">
+      <view class="notify-text">
+        <view class="notify-title">🔔 新预约 / 取消提醒</view>
+        <view class="notify-sub">{{notifyEnabled ? '额度已开启，用完可再点一次' : '开启后有人预约或取消时微信通知你'}}</view>
+      </view>
+      <view class="notify-btn" bindtap="enableNotify">{{notifyEnabled ? '再开启一次' : '开启'}}</view>
+    </view>
+
     <!-- 统计 -->
     <view class="stats">
       <view class="stat-card">

@@ -4,6 +4,7 @@
 const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
+const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
 
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
 const LOAD_TTL = 60 * 1000;
@@ -321,6 +322,21 @@ Page({
 
   // 第二步：个人信息确认（并补全）通过后才真正下单
   async onSaveInfo(e) {
+    // 下单前最后一个手势在这里：先把「预约结果通知」的订阅额度拿到手，
+    // 保证 createBooking 之后化妆师确认/拒绝时能发出去。
+    //
+    // 为什么不在 doCreateBooking 里请求：那里已经在 onSaveInfo 里 await 过
+    // userProfile，跨了一次真实异步边界，部分基础库上会丢失手势上下文报
+    // can only be invoked by user TAP action；而且此刻顾客正盯着信息表，
+    // 突然弹订阅框观感也差。
+    //
+    // 必须门控 infoMode==='confirm' —— onSaveInfo 同时服务于点「详细信息」
+    // 的保存场景（infoMode='view'），那条路只是保存资料，不该被问订阅。
+    // 模板 ID 为空时 requestSubscribe 直接 resolve，静默跳过。
+    if (this.data.infoMode === 'confirm') {
+      await requestSubscribe([TPL_CUSTOMER_RESULT]);
+    }
+
     const form = e.detail.info || {};
     this.setData({ submitting: true });
     const formCmp = this.selectComponent('#infoForm');
