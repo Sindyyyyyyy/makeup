@@ -1,0 +1,41 @@
+<!-- pages/adminLogin/adminLogin.wxml - 化妆师登录页（无底部菜单栏） -->
+<view class="login-page">
+
+  <!-- 自定义导航栏：navigationStyle=custom 才能拿到左上角这一块 -->
+  <view class="custom-nav" style="padding-top: {{statusBarHeight}}px;">
+    <view class="back-btn" bindtap="goBack" hover-class="back-hover">
+      <text class="back-icon">‹</text>
+    </view>
+    <text class="nav-title">化妆师登录</text>
+  </view>
+
+  <view class="login-body">
+    <!-- 正在问服务端"我是不是化妆师"。这段时间什么都不渲染，
+         免得已登记的化妆师每次进来都看到密码框闪一下 -->
+    <block wx:if="{{checking}}">
+      <view class="checking">正在确认身份…</view>
+    </block>
+
+    <block wx:else>
+      <view class="login-icon">🌷</view>
+      <view class="login-title">化妆师登录</view>
+      <view class="login-sub">请输入管理密码</view>
+
+      <input class="login-input"
+             password="true"
+             placeholder="管理密码"
+             placeholder-class="login-ph"
+             value="{{passcode}}"
+             bindinput="onPwdInput"
+             bindconfirm="login"
+             focus="{{true}}" />
+
+      <button class="btn-primary" bindtap="login" loading="{{loading}}" disabled="{{loading}}">
+        登录
+      </button>
+
+      <!-- 不知道密码时的兜底，和左上角箭头是同一个动作 -->
+      <view class="back-tip" bindtap="goBack">不知道密码？返回顾客页面</view>
+    </block>
+  </view>
+</view>

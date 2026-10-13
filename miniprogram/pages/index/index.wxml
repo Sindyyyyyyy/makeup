@@ -1,3 +1,5 @@
+<!-- 顾客预约（adminMode=false 时渲染） -->
+<block wx:if="{{!adminMode}}">
 <view class="container">
   <!-- 顶部欢迎区 -->
   <view class="header">
@@ -162,3 +164,9 @@
   bind:close="closeInfo"
   bind:save="onSaveInfo"
 />
+</block>
+
+<!-- 化妆师后台（adminMode=true 时渲染，与顾客端互斥）
+     做成组件而不是独立页面，是为了底部「首页 / 个人中心」导航始终在。
+     退出登录或令牌过期时组件会抛 modechange，宿主切回顾客端。 -->
+<admin-panel wx:else id="adminPanel" active="{{adminMode ? 'admin' : 'customer'}}" bind:modechange="onModeChange" />

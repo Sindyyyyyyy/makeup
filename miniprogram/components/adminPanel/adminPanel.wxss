@@ -1,4 +1,4 @@
-/* pages/admin/admin.wxss - 化妆师后台 (温柔少女风) */
+/* components/adminPanel/adminPanel.wxss - 化妆师后台 (温柔少女风) */
 .container {
   padding: 24rpx;
   padding-bottom: 80rpx;
@@ -265,6 +265,17 @@
   border-radius: 24rpx;
   font-size: 24rpx;
   border: none;
+}
+
+.load-more {
+  text-align: center;
+  font-size: 26rpx;
+  color: #C95B7C;
+  padding: 24rpx 0;
+}
+.load-more.tip {
+  color: #BBB;
+  font-size: 22rpx;
 }
 
 .footer-tip {

@@ -3,6 +3,7 @@
   "navigationBarBackgroundColor": "#C95B7C",
   "navigationBarTextStyle": "white",
   "usingComponents": {
-    "info-form": "/components/infoForm/infoForm"
+    "info-form": "/components/infoForm/infoForm",
+    "admin-panel": "/components/adminPanel/adminPanel"
   }
 }

@@ -1,11 +1,11 @@
 // utils/slots.js - 前后端共用的时段/日期定义（唯一来源）
 const SLOT_DEFS = [
-  { key: 'morning', name: '上午', time: '8:00-11:00' },
+  { key: 'morning', name: '上午', time: '09:30-11:30' },
   { key: 'afternoon', name: '下午', time: '14:00-17:00' },
   { key: 'evening', name: '晚上', time: '18:00-21:00' },
 ];
 
-const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
+const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
 const SLOT_NAME_MAP = SLOT_NAMES;
 
 // 时段先后顺序，用于「越晚越靠上」这类排序

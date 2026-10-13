@@ -5,7 +5,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
-const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
+const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
 
 // 妆造（样式）校验：名称 ≤ 20 字，价格 0~99999 元
 const MAX_STYLE_NAME = 20;

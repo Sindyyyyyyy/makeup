@@ -1,0 +1,6 @@
+{
+  "component": true,
+  "usingComponents": {
+    "info-form": "/components/infoForm/infoForm"
+  }
+}

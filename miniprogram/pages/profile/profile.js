@@ -1,5 +1,6 @@
-// pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 化妆师入口）
+// pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 双端切换入口）
 const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
+const { currentMode, setMode } = require('../../utils/role.js');
 
 const CACHE_KEY = 'user_profile';
 const INFO_CACHE_KEY = 'user_info';
@@ -21,6 +22,9 @@ Page({
     showInfo: false,
     savingInfo: false,
     info: emptyForm(),
+    // 是不是「后台视图」状态。注意不要求有令牌：没输密码时首页也停在登录框上，
+    // 这时个人中心必须给一个能逃出去的「顾客端入口」。
+    isAdmin: false,
   },
 
   onLoad() {
@@ -41,6 +45,11 @@ Page({
       this.setData({ info: this._savedInfo });
     }
     this.fetchProfile();
+  },
+
+  onShow() {
+    // 可能在首页切了端或登录/退出，回来时入口文案要跟着变
+    this.setData({ isAdmin: currentMode() === 'admin' });
   },
 
   // ============ 资料 ============
@@ -181,8 +190,17 @@ Page({
     }
   },
 
-  // ============ 化妆师入口 ============
+  // ============ 双端切换 ============
+  // 顾客 → 化妆师：先进独立的登录页（没有底部菜单），输对密码才落到后台。
+  // 这里刻意不改模式——点进来不等于已经登录，改了就得考虑怎么撤销。
   goAdmin() {
-    wx.navigateTo({ url: '/pages/admin/admin' });
+    wx.navigateTo({ url: '/pages/adminLogin/adminLogin' });
+  },
+
+  // 化妆师 → 顾客：只是换个视图，令牌保留，来回切不用重新输密码。
+  // 首页是 tab 页，必须 switchTab，navigateTo 到不了。
+  goCustomer() {
+    setMode('customer');
+    wx.switchTab({ url: '/pages/index/index' });
   },
 });

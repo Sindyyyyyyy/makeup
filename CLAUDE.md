@@ -4,26 +4,66 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A WeChat Mini Program (微信小程序) for a makeup artist's appointment booking (化妆预约). Customers pick a date + one of three time slots and submit a booking from the home page (首页); the makeup artist (admin) opens/closes slots per date and manages booking status from admin pages reached through the 个人中心 page. All data lives in WeChat Cloud Development (云开发) — there is no server of its own and no build step.
+A WeChat Mini Program (微信小程序) for a makeup artist's appointment booking (化妆预约). Customers pick a date + one of three time slots and submit a booking from the home page (首页); the makeup artist (admin) opens/closes slots per date and manages booking status from the 化妆师后台, which occupies the *same* 首页 tab. All data lives in WeChat Cloud Development (云开发) — there is no server of its own and no build step.
 
 ## Architecture
 
 Two halves that talk only through cloud functions:
 
-- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/admin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (currently only `infoForm`); a page must declare it in its own `.json` `usingComponents`. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
+- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/adminLogin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (`infoForm`, `adminPanel`); a page must declare them in its own `.json` `usingComponents`. A component directory's files must be named after the directory (`adminPanel/adminPanel.js`), **not** `index.js` — `usingComponents` paths are resolved literally. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
+
+### 双端首页（顾客 ⇄ 化妆师）
+
+`pages/index` is one page that renders **two mutually exclusive UIs**, picked by `data.adminMode`: the customer booking grid, or the artist dashboard (`components/adminPanel`). There is deliberately no separate admin *dashboard page* — it used to be a normal page reached via `wx.navigateTo`, which made the tab bar disappear; keeping it inside 首页 means the 首页/个人中心 bar is always there.
+
+Login is a **separate non-tab page**, `pages/adminLogin` (`navigationStyle: custom`, so it has no bottom tab bar and only its own top-left back arrow). Tapping 化妆师入口 in 个人中心 goes there; it does **not** touch `admin_mode` — merely opening the page isn't logging in, and it would then have to be undone on cancel. Only a successful `adminLogin` sets `admin_mode: 'admin'` and `switchTab`s to 首页. Its back arrow `switchTab`s to 首页 and resets the mode to `customer` when there's no token.
+
+### 免密登录（users.admin 标记）
+
+The artist's identity is a boolean **`admin` field on her `users` doc**, not the password. `adminLogin` writes it `true`; the dashboard's 退出 button calls `adminLogout` to write it back `false`. One password entry, then passwordless forever until she explicitly logs out.
+
+`adminLogin` takes an explicit `action`:
+
+| `event.action` | auth required | behavior |
+|---|---|---|
+| `'login'` (default) | `password === ADMIN_PASSWORD` | sets `users.admin = true`, mints a token |
+| `'refresh'` | `users[OPENID].admin === true` | mints a token with **no password** |
+
+**Any missing or unrecognized `action` degrades to `'login'`, never to `'refresh'`** — a typo must not open the passwordless path. A wrong password returns immediately: it must never fall through to `refresh`. The `refresh` branch never reads `event.password`; the `login` branch never reads `users` to authorize.
+
+> **Core invariant: `admin` can mint a token; a token can never mint `admin`.** Only the password sets it. This is what makes 退出 meaningful.
+
+The local `admin_token` is just a **re-mintable cache** of that server identity. When it's gone or expired, `role.js`'s `refreshAdminToken()` asks the server "am I still the artist?" and gets a fresh one without a password. `adminPanel` calls it in `ready()` and again on `UNAUTHORIZED` (guarded by `_authChecked`, an instance field — never `data`, or a `setData` in `ready()` races the first render), so a cold start after 7 days silently re-mints instead of showing a password box.
+
+`adminLogout` revokes **self only**: the target openid comes from `cloud.getWXContext()` and never from `event`, so no caller can revoke anyone else. It **deliberately does not check the token** — if it did, an expired token would make 退出 a no-op while `users.admin` stayed `true`. It's a strict self-downgrade, so skipping the check grants nothing; unauthenticated callers can at worst clear a flag that isn't theirs (a no-op).
+
+**`admin` is server-owned.** It is written only by `adminLogin`/`adminLogout` and is deliberately absent from `userProfile`'s whitelist patches and from its `get` response. Adding it to the `get` response would tempt an `if (r.admin)` gate that authorizes nothing. `adminLogin` writes it with `update()`, falling back to `set()` **only** when the doc doesn't exist (`-502003`) — `set()` replaces the whole doc and would wipe `info`/nickname/avatar, which matters because 化妆师 may never have opened 个人中心.
+
+`miniprogram/utils/role.js` is the single source of truth for "which side am I on" and must be used instead of touching storage directly:
+
+- `isLoggedIn()` — is there an `admin_token` locally. Token-string presence only; **don't** decode `exp` client-side (no key to verify the signature, and the server's `UNAUTHORIZED` is authoritative).
+- `currentMode()` — reads `admin_mode` only; it is a *view* preference, never an authorization signal.
+- `setMode()`, `clearAdmin()` (drops both keys → lands on the customer side), `getToken()`, `saveToken()`, `setAdminSession()`, `refreshAdminToken()` — the **only** caller of `adminLogin{action:'refresh'}` in the app.
+- `syncTabBar(mode)` — rewrites index 0's text/icons/nav title via `wx.setTabBarItem` (`home*.png` ⇄ `manage*.png`); tab pages only.
+
+Since `currentMode()` ignores the token, a stale `admin_mode: 'admin'` with no token leaves 首页 showing the dashboard's 去登录 card. Recovery: tap 去登录, or 顾客端入口 in 个人中心 (which shows whenever `currentMode() === 'admin'`, token or not — otherwise there'd be no way out). `adminPanel.ensureSession()` intentionally does **not** switch back to the customer side on failure, for the same reason.
+
+切换 between the two ends is a *view* switch, not a logout: 化妆师 bounces between 顾客端入口 and 化妆师入口 without re-entering the password.
+
+`components/adminPanel` has no page lifecycle — `pages/index` drives it (`ready()` loads once; `index.onPullDownRefresh` calls `refresh()`, which must **return the whole promise chain** or the pull-down spinner stops before data lands). Methods must live under `methods` (top-level methods are silently dropped by `Component`, unlike `Page`). `logout()` revokes server-side first, then clears local state **regardless of outcome** — skipping the revoke leaves `users.admin` true (退出 becomes fake), while gating the clear on success traps her in the dashboard on a network blip. It differentiates the toast so a failed revoke is never reported as success.
 
 ### Tab bar
 
-`app.json` defines a native two-item tabBar: `pages/index/index` (首页) and `pages/profile/profile` (个人中心). Tab pages are cached, so their `onLoad` runs only once — anything that must refresh on every visit belongs in `onShow` (`index` already reloads there). Navigate **between** tab pages with `wx.switchTab` only; `wx.navigateTo` fails on a tab page. The admin pages are not tabs and are reached from 个人中心 via `wx.navigateTo`.
+`app.json` defines a native two-item tabBar: `pages/index/index` (首页) and `pages/profile/profile` (个人中心). Tab pages are cached, so their `onLoad` runs only once — anything that must refresh on every visit belongs in `onShow` (`index` already reloads there, and re-reads `currentMode()` there because the artist may have switched sides from 个人中心). Navigate **between** tab pages with `wx.switchTab` only; `wx.navigateTo` fails on a tab page. `adminSlots`/`adminStyles` are not tabs and are reached from the dashboard via `wx.navigateTo`.
 - **Cloud functions** (`cloudfunctions/<name>/index.js`) — one directory per function, each with its own `package.json` depending on `wx-server-sdk ~2.6.3`. Every function starts with `cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })`; the env ID is hardcoded once in `miniprogram/app.js` (`globalData.env`).
 
-There is no custom component other than `components/infoForm`.
+There is no custom component other than `components/infoForm` and `components/adminPanel`.
 
 ### Cloud database collections
 
 - `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed).
 - `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `status`, `createTime`, `updateTime`.
-- `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`. `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself.
+- `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`, and the server-owned `admin` / `adminUpdateTime` (see 免密登录 below). `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **`admin` must never enter any whitelist patch or the `get` response — it is written only by `adminLogin`/`adminLogout`.** **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself. Without it, passwordless re-mint always fails and the artist re-enters the password every time.
 
 ### Customer profile (头像/昵称/个人信息表)
 
@@ -68,6 +108,7 @@ Per-slot 妆造 options and prices are configured by the admin in `adminSlots` a
 
 - **Customers**: identity is the server-side `OPENID` only, via `cloud.getWXContext()` with a fallback to the `context` arg of `exports.main`. It is never accepted from `event`. Ownership is enforced server-side (`booking._openid !== openid`). The shared helper is copy-pasted into each function rather than shared — keep that convention.
 - **Admin**: `adminLogin` checks a password and issues a 7-day HMAC-SHA256 token (`base64({exp}).sig`). The password (`ADMIN_PASSWORD`) and secret (`TOKEN_SECRET`) live in `process.env` with hardcoded fallbacks. Every `admin*` function carries a duplicated `verifyAdmin()` block; all admin calls pass `token` from `wx.getStorageSync('admin_token')`.
+- **Known admin weaknesses (accepted, not yet fixed)**: the token payload carries **no identity** — it is `{exp}` only, so it is a bearer token (steal it and you have admin for up to 7 days) and there is no attribution between artists. Password changes don't revoke already-issued tokens. Fixing this means putting the openid in the payload and having `verifyAdmin` cross-check `users[openid].admin === true`. The `users.admin` flag added for passwordless entry does **not** close this on its own — it is a UX/identity-memory feature, not an auth-bound one.
 
 ## Commands
 

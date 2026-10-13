@@ -42,9 +42,12 @@
     </view>
   </view>
 
-  <!-- 化妆师入口 -->
-  <view class="admin-entry" bindtap="goAdmin">
+  <!-- 双端切换入口：化妆师和顾客看到的是同一个位置、文案相反 -->
+  <view wx:if="{{!isAdmin}}" class="admin-entry" bindtap="goAdmin">
     <text>🌷 化妆师入口</text>
+  </view>
+  <view wx:else class="admin-entry" bindtap="goCustomer">
+    <text>💄 顾客端入口</text>
   </view>
 
 </view>

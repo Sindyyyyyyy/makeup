@@ -2,7 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/profile/profile",
-    "pages/admin/admin",
+    "pages/adminLogin/adminLogin",
     "pages/adminSlots/adminSlots",
     "pages/adminStyles/adminStyles"
   ],

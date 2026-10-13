@@ -1,12 +1,17 @@
-// pages/index/index.js - 顾客预约主页 v1.1.0
+// pages/index/index.js - 首页 v2.0.0
+// 按身份渲染两套完全不同的界面：顾客看预约课表，化妆师看管理后台。
+// 视图模式由 utils/role.js 的 currentMode() 判定（admin_token 与 admin_mode 分离）。
 const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
+const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
 
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
 const LOAD_TTL = 60 * 1000;
 
 Page({
   data: {
+    // true=化妆师后台，false=顾客预约。决定整页渲染哪一套界面
+    adminMode: false,
     slots: SLOT_DEFS.map((s, i) => ({ ...s, _idx: i })),
     weekOffset: 0,
     weekDates: [],
@@ -36,16 +41,50 @@ Page({
     this._loadedAt = 0;
     this._dirty = false;
     this._profileFetchedAt = 0;
+    this.applyMode(currentMode());
   },
 
   onShow() {
+    // 模式每次切回来都要重算：可能在个人中心点了「化妆师入口/顾客端入口」。
+    // 切回顾客端时 applyMode 会把 _loadedAt 清零，这里自然触发一次重拉。
+    this.applyMode(currentMode());
+
+    // 化妆师不需要课程表和本人资料，别白打两次云函数
+    if (this.data.adminMode) return;
+
     // tabBar 页面每次切回来都会触发 onShow。60 秒内且本地无变更时直接跳过，
     // 避免反复切 tab 每次都打两次云函数。下拉刷新仍可强制拉取。
     const fresh = Date.now() - (this._loadedAt || 0) < LOAD_TTL;
     if (this._dirty || !this._loadedAt || !fresh) this.loadAll();
   },
 
+  // 统一切换整页形态：顾客预约 ⇄ 化妆师后台，并让 tabBar 文案/图标跟着变
+  applyMode(mode) {
+    const adminMode = mode === 'admin';
+    if (adminMode !== this.data.adminMode) {
+      // 切到顾客端时，旧的课表数据已过期（化妆师期间可能有变动），强制重拉
+      if (!adminMode) this._loadedAt = 0;
+      this.setData({ adminMode });
+    }
+    syncTabBar(mode);
+  },
+
+  // adminPanel 组件在退出登录或令牌过期时通知宿主切回顾客端
+  onModeChange(e) {
+    const mode = (e.detail && e.detail.mode) || 'customer';
+    setMode(mode);
+    this.applyMode(mode);
+    if (mode === 'customer') this.loadAll();
+  },
+
   onPullDownRefresh() {
+    if (this.data.adminMode) {
+      // 组件没有页面生命周期，下拉刷新由宿主转交
+      const panel = this.selectComponent('#adminPanel');
+      const p = panel ? panel.refresh() : Promise.resolve();
+      Promise.resolve(p).then(() => wx.stopPullDownRefresh());
+      return;
+    }
     this._dirty = true; // 绕过 onShow 的 TTL
     this.loadAll().then(() => wx.stopPullDownRefresh());
   },
@@ -140,7 +179,7 @@ Page({
           continue;
         }
 
-        // 当天已过结束时刻的时段同样不可预约（如上午 10 点不能再约 8-11 点）。
+        // 当天已过结束时刻的时段同样不可预约（如上午 10 点不能再约 09:30-11:30）。
         // 只是前端体验，服务端 createBooking 还会再校验一次。
         if (isSlotExpired(day.date, slotKey)) {
           grid[s][d] = { status: 'expired', slotState: null };

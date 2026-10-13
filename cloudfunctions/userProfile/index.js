@@ -74,6 +74,10 @@ function normalizePhotos(photos) {
 }
 
 // 表单结构（素颜照选填，其余选填但会覆盖）
+//
+// 白名单只收表单字段。文档顶层的 admin 标记是服务端独占写入的
+// （adminLogin 置 true、adminLogout 置 false），任何客户端字段都不得落库——
+// 把它加进下面的返回值，或加进 save/saveInfo 的 patch，等于让顾客自己给自己升权。
 function normalizeInfo(input, prev) {
   const src = input || {};
   const oldInfo = prev || {};

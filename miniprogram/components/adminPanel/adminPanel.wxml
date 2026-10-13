@@ -1,13 +1,14 @@
 <view class="container">
 
-  <!-- 未登录：显示密码框 -->
+  <!-- 登录表单已挪到独立页 pages/adminLogin（顾客点「化妆师入口」先进那里）。
+       走到这里却没有令牌，只可能是令牌在子页（adminSlots/adminStyles）过期被清了，
+       提示并把人送回登录页即可。 -->
   <block wx:if="{{!isAdmin}}">
     <view class="login-card">
-      <view class="login-title">🌷 化妆师登录</view>
-      <view class="login-sub">请输入管理密码</view>
-      <input class="login-input" password="true" placeholder="管理密码"
-             value="{{passcode}}" bindinput="onPwdInput" />
-      <button class="btn-primary" bindtap="login" loading="{{loading}}">登录</button>
+      <view class="login-title">🌷 登录已失效</view>
+      <view class="login-sub">请重新输入管理密码</view>
+      <button class="btn-primary" bindtap="goLogin">去登录</button>
+      <view class="hint">也可以到个人中心切回顾客端</view>
     </view>
   </block>
 
@@ -97,7 +98,7 @@
     <view wx:if="{{hasMore}}" class="load-more" bindtap="loadMore">加载更多</view>
     <view wx:elif="{{bookings.length > 0}}" class="load-more tip">已加载全部</view>
 
-    <view class="footer-tip">下拉可刷新</view>
+    <view class="footer-tip">下拉可刷新 · 个人中心可切回顾客端</view>
   </block>
 </view>
 

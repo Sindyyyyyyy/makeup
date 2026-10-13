@@ -5,7 +5,7 @@ const db = cloud.database();
 
 // 每天3个时段
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
-const SLOT_NAMES = { morning: '8-11点', afternoon: '14-17点', evening: '18-21点' };
+const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
@@ -112,7 +112,7 @@ exports.main = async (event, context) => {
     return { success: false, message: '不能预约已过去的日期' };
   }
 
-  // 禁止预约当天已过结束时刻的时段（如上午 10 点不能再约 8-11 点）。
+  // 禁止预约当天已过结束时刻的时段（如上午 10 点不能再约 09:30-11:30）。
   // 前端也会置灰，但客户端能绕过，必须服务端兜底。
   const now = beijingNow();
   const endHour = SLOT_END_HOUR[slot];
