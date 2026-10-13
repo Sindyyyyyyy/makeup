@@ -71,6 +71,8 @@ There is no custom component other than `components/infoForm` and `components/ad
 
 The `users` doc is the source of truth; `wx.setStorageSync('user_profile' / 'user_info', …)` are render caches only, to make the page open instantly.
 
+**素颜照 fileID 只能上传者本人直接渲染，化妆师看不到。** `<image src="cloud://…">` 会按当前用户的 openid 校验存储桶的 ACL，桶若是「仅创建者可读写」，顾客能看自己的照片，化妆师后台却一片空白——代码和数据都没错，症状却像丢图。别去放宽桶权限（素颜照敏感，任何用户拿到 fileID 就能读别人的）。正确做法是 `adminGetUserProfile` 用 admin SDK 调 `cloud.getTempFileURL` 换成 https 临时链接再返回；admin SDK 绕过 ACL，桶权限保持不变。顾客端存回 `users` 的仍是 fileID，别把临时链接写进库（会过期）。这是存储 API 调用，不消耗云函数调用次数，但只在化妆师点开「详细信息」时触发，照片为空要直接短路。
+
 Two `userProfile` actions write the doc, and they must stay separate: `save` (avatar + nickname) and `saveInfo` (the form). The form does **not** edit 昵称 — it shows the header's nickname as read-only text, because the two fields are the same `nickname` in the doc and letting both edit it invites drift. `openInfo` seeds `form.nickname` from the header so the display is never stale. All enum values are whitelisted server-side, and `photos` entries that are not `cloud://`/`http(s)://` URLs are dropped.
 
 **`doc().set()` replaces the whole document — never use it to update a single field here.** The header save originally did, which silently wiped the form. Both actions now read first (`readDoc`) and use `update({ data })` when the doc exists, falling back to `set` to create it. Also note: cloud-function-side `set`/`update`/`add` all require the `{ data: {...} }` wrapper; passing bare fields fails with `parameter.data should be object instead of undefined`.
