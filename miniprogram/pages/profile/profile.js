@@ -1,9 +1,15 @@
 // pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 双端切换入口）
-const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
+const { emptyForm, toForm, missingFields, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, setMode } = require('../../utils/role.js');
 
 const CACHE_KEY = 'user_profile';
 const INFO_CACHE_KEY = 'user_info';
+
+// 与首页共用同一个节流窗口（见 utils/profileInfo.js 的 FETCHED_AT_KEY）。
+// 顾客在首页点格子会拉一次资料，紧接着切到个人中心——原来两个 tab 各拉一次，
+// 拿回来的是同一份数据。onLoad 已经把 storage 缓存渲染出来了，
+// TTL 内直接跳过云端，界面不会有任何变化。
+const FETCH_TTL = 60 * 1000;
 
 // 表单是否算“填过”（决定入口显示“已填写”还是“去填写”）
 function hasContent(info) {
@@ -54,6 +60,9 @@ Page({
 
   // ============ 资料 ============
   async fetchProfile() {
+    // 节流：与首页共享时间戳，60 秒内已经拉过就不必再打一次云函数。
+    // onLoad 已用 storage 缓存完成了首屏渲染，跳过时界面不会缺东西。
+    if (Date.now() - fetchedAt() < FETCH_TTL) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
@@ -65,6 +74,7 @@ Page({
         return;
       }
       if (!r || !r.success) return;
+      markFetched();
       const remote = {
         avatarUrl: (r.profile && r.profile.avatarUrl) || '',
         nickname: (r.profile && r.profile.nickname) || '',
@@ -137,6 +147,8 @@ Page({
       this._saved = saved;
       this.setData({ ...saved, dirty: false });
       wx.setStorageSync(CACHE_KEY, saved);
+      // 昵称就是 users.nickname，首页读的是同一个字段，清掉时间戳强制回云端校准
+      clearFetched();
       wx.showToast({ title: '已保存', icon: 'success' });
     } catch (err) {
       console.error('保存个人资料异常：', err);
@@ -179,6 +191,8 @@ Page({
       const saved = toForm(r.info, this.data.nickname);
       this._savedInfo = saved;
       wx.setStorageSync(INFO_CACHE_KEY, saved);
+      // 资料刚变过：清掉共享时间戳，首页下次读资料必须回云端
+      clearFetched();
       this.setData({ showInfo: false, info: saved, hasInfo: hasContent(saved) });
       wx.showToast({ title: '已保存', icon: 'success' });
     } catch (err) {

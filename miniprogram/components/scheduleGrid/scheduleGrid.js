@@ -4,8 +4,22 @@
 // 方法必须放在 methods 下：Component 会静默丢弃顶层方法。
 const { SLOT_DEFS, computeWeekDates } = require('../../utils/slots.js');
 const { isLoggedIn } = require('../../utils/role.js');
+const styleCache = require('../../utils/styleCache.js');
 
 const TOKEN_KEY = 'admin_token';
+
+// 网格单元格的统一形状。buildGrid（整周拉取）和 patchCell（改完一处就地打补丁）
+// 共用这个函数，两条路径产出的结构必须完全一致，否则打补丁的格子会和别的格子
+// 在视图层长得不一样。
+function toCell(slotState) {
+  const s = (slotState && typeof slotState === 'object') ? slotState : null;
+  return {
+    open: !!(s && s.open),
+    booked: !!(s && s.booked),
+    done: !!(s && s.done),
+    styles: s && Array.isArray(s.styles) ? s.styles : [],
+  };
+}
 
 Component({
   properties: {
@@ -52,13 +66,14 @@ Component({
   },
 
   methods: {
-    // 宿主调用：重新拉数据。withStyles 为真时连妆造库一起刷新
-    // （从「妆容管理」返回时快捷按钮可能已增减）。返回 Promise，宿主可 await
-    reload(opts) {
+    // 宿主调用：重新拉时段表。妆造库走 styleCache 的 5 分钟共享缓存——
+    // 妆容管理页每次增删都会把新列表写回缓存（连时间戳一起刷新），所以
+    // 「刚改完妆造就返回时段管理」拿到的必然是最新的一份，不必每次都绕过缓存。
+    // 妆造库真过期时 getStyles 会自己去云端取，这里不用管。
+    // 返回 Promise，宿主可 await。
+    reload() {
       if (!this.data.active || !isLoggedIn()) return Promise.resolve();
-      const withStyles = !!(opts && opts.withStyles);
-      const p = this.loadSlots();
-      return withStyles ? Promise.all([p, this.loadStyleLibrary()]).then(() => {}) : p;
+      return this.loadSlots();
     },
 
     applyWeek(offset) {
@@ -125,17 +140,23 @@ Component({
         const slotKey = SLOT_DEFS[s].key;
         for (let d = 0; d < dates.length; d++) {
           const ts = tsMap[dates[d]];
-          const slotState = ts ? ts[slotKey] : null;
-          grid[s][d] = slotState && typeof slotState === 'object'
-            ? {
-                open: !!slotState.open,
-                booked: !!slotState.booked,
-                done: !!slotState.done,
-                styles: Array.isArray(slotState.styles) ? slotState.styles : [],
-              }
-            : { open: false, booked: false, done: false, styles: [] };
+          grid[s][d] = toCell(ts ? ts[slotKey] : null);
         }
       }
+      this.setData({ grid });
+    },
+
+    // 就地更新一个格子。adminSetTimeSlot 会在响应里回传它刚写进去的那个时段，
+    // 所以「保存妆造」「关闭时段」不必再把整周时段表重拉一遍——原来每次保存都要
+    // 多花一次云函数调用外加 7 天 × 3 个时段的响应体积。
+    // 下拉刷新 / 翻周仍然全量重拉，所以数据不会因为打补丁而长期偏离服务端。
+    patchCell(date, slot, slotState) {
+      const sIdx = SLOT_DEFS.findIndex(s => s.key === slot);
+      const dIdx = this.data.weekDates.findIndex(d => d.date === date);
+      if (sIdx < 0 || dIdx < 0) return;
+      const grid = this.data.grid.map((row, i) => (
+        i === sIdx ? row.map((c, j) => (j === dIdx ? toCell(slotState) : c)) : row
+      ));
       this.setData({ grid });
     },
 
@@ -223,21 +244,20 @@ Component({
     noop() {},
 
     // 妆造库 → 时段弹窗里的快捷按钮
+    // 走 styleCache 的共享缓存：妆容管理页也在维护同一份库，原来两边各拉一次。
+    // 缓存只存「妆造有哪些」，不存令牌，也不绕过服务端的 UNAUTHORIZED。
     async loadStyleLibrary() {
       try {
-        const res = await wx.cloud.callFunction({
-          name: 'adminStyles',
-          data: { action: 'list', token: wx.getStorageSync(TOKEN_KEY) },
-        });
-        if (res.result && res.result.success) {
+        const r = await styleCache.getStyles();
+        if (r && r.success) {
           this.setData({
-            quickStyles: (res.result.styles || []).map(s => ({ name: s.name, price: String(s.price) })),
+            quickStyles: (r.styles || []).map(s => ({ name: s.name, price: String(s.price) })),
           });
-        } else if (res.result && res.result.code === 'UNAUTHORIZED') {
+        } else if (r && r.code === 'UNAUTHORIZED') {
           this.handleAuthFail();
-        } else if (res.result) {
+        } else if (r) {
           // 妆造库是可选依赖，报错只提示不阻塞时段管理
-          const msg = res.result.message || '';
+          const msg = r.message || '';
           if (msg.length > 18) {
             wx.showModal({ title: '妆造库提示', content: msg, showCancel: false });
           }
@@ -336,19 +356,22 @@ Component({
           },
         });
         if (res.result && res.result.success) {
-          // 重新拉取并校验妆造是否真的落库，避免旧版云函数静默丢弃 styles
-          await this.loadSlots();
-          const saved = this.findCell(modalDate, modalSlot);
-          if (!saved || (saved.styles || []).length !== styles.length) {
+          // 云函数会把刚写进去的那个时段原样回传（slotState）。有它就说明部署的
+          // 是新版函数、确实认得 styles 字段；没有它就是还在跑旧版——旧版会静默
+          // 丢掉 styles，顾客看到的时段是个没有妆造的空壳。
+          // 这个判断比原来的「保存完再整周重拉一遍比对长度」更强：旧版函数无论如何
+          // 都不会回传 slotState，而且省掉了那一次云函数调用。
+          const st = res.result.slotState;
+          if (!st) {
             wx.showModal({
               title: '妆造未保存',
-              content: '该时段已开放，但妆造没有写入数据库。\n'
-                + '通常是因为云函数 adminSetTimeSlot 仍是旧版本。\n'
-                + '请在开发者工具中右键该云函数目录 → 上传并部署：云端安装依赖，然后重试。',
+              content: '该时段已开放，但云函数没有回传保存结果，说明部署的仍是旧版本。\n'
+                + '请在开发者工具中右键 adminSetTimeSlot 目录 → 上传并部署：云端安装依赖，然后重试。',
               showCancel: false,
             });
             return;
           }
+          this.patchCell(modalDate, modalSlot, st);
           wx.showToast({ title: modalIsOpen ? '妆造已更新' : '已开放预约', icon: 'success' });
           this.setData({ showStyleModal: false });
         } else if (res.result && res.result.code === 'UNAUTHORIZED') {
@@ -382,7 +405,12 @@ Component({
         if (res.result && res.result.success) {
           wx.showToast({ title: res.result.message, icon: 'success' });
           this.setData({ showStyleModal: false });
-          this.loadSlots();
+          // 与 saveStyles 同理：关一个格子不必重拉整周
+          if (res.result.slotState) {
+            this.patchCell(modalDate, modalSlot, res.result.slotState);
+          } else {
+            this.loadSlots();
+          }
         } else if (res.result && res.result.code === 'UNAUTHORIZED') {
           this.handleAuthFail();
         } else {

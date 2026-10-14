@@ -62,7 +62,11 @@ const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
 // 注意 .where({ date }) 是单字段查询：date+slot 的组合查询可能要求额外索引，
 // 所以 slot 的过滤放在内存里做。
 async function findBooking(date, slot) {
-  const res = await db.collection('bookings').where({ date }).limit(100).get();
+  // 上限只是防呆。理论上一天最多 3 条有效预约（三个时段各一），
+  // 但历史数据里可能留下已取消/已拒绝的脏记录，所以给到 500 再在内存里筛。
+  // 上限太低会「静默查不到」——下面返回 exists:false，页面会显示成
+  // 「没有对应的预约记录」，看着像没预约，其实是被 limit 截掉了。
+  const res = await db.collection('bookings').where({ date }).limit(500).get();
   return (res.data || []).find(
     (b) => b.slot === slot && b.status !== 'rejected' && b.status !== 'cancelled'
   ) || null;

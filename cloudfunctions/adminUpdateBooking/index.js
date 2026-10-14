@@ -202,7 +202,9 @@ exports.main = async (event) => {
     }
 
     const messages = { confirmed: '已确认预约', rejected: '已拒绝预约', completed: '已标记完成' };
-    return { success: true, message: messages[rule.to] };
+    // 把落库后的新状态一并回传：客户端据此就地改那一条记录，
+    // 不必为了一个状态翻转再全量重拉整页预约（省一次云函数调用 + 50 条文档过桥）
+    return { success: true, message: messages[rule.to], status: rule.to };
   } catch (err) {
     console.error('adminUpdateBooking error:', err);
     return { success: false, message: '服务器错误：' + err.message };

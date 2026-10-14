@@ -73,17 +73,35 @@ async function listStyles() {
     throw err;
   }
 
-  // 首次使用：写入默认妆造，避免化妆师面对空白页
+  // 首次使用：写入默认妆造，避免化妆师面对空白页。
+  // 并发写入而不是串行：原来三条 add 依次 await，第二条失败就留下半份数据，
+  // 而重试的判据是「集合为空」，有了那 1 条就永远不会再补齐——
+  // 妆造库会永久停在残缺状态，只能去控制台手工删干净。
   if (!res.data || res.data.length === 0) {
-    for (let i = 0; i < DEFAULTS.length; i++) {
-      await db.collection(COLLECTION).add({
-        data: { ...DEFAULTS[i], sort: i, createTime: db.serverDate() },
-      });
-    }
+    await Promise.all(DEFAULTS.map((d, i) =>
+      db.collection(COLLECTION).add({
+        data: { ...d, sort: i, createTime: db.serverDate() },
+      }).catch(e => console.warn('写入默认妆造失败', d.name, e.message))
+    ));
     const seeded = await db.collection(COLLECTION).orderBy('sort', 'asc').get();
     return seeded.data;
   }
   return res.data;
+}
+
+// 增删改都把受影响的那一条原样回传，客户端据此本地打补丁，
+// 不必再全量拉一次列表（一次增删从 2 次云函数调用降到 1 次）。
+//
+// 注意这里不回传 sort：add 用的是「当前条数」当 sort，update 则根本不碰 sort
+// （改名改价不影响排序）。两种情况下由客户端按自己那份列表推算更可靠——
+// 它手里有完整的 sort 值，云函数这边还得为它多读一次文档。
+function toStyleDoc(doc, id) {
+  const d = doc || {};
+  return {
+    _id: d._id || id || '',
+    name: d.name || '',
+    price: d.price || 0,
+  };
 }
 
 exports.main = async (event) => {
@@ -113,10 +131,15 @@ exports.main = async (event) => {
         return { success: false, message: `妆造最多 ${MAX_COUNT} 个` };
       }
 
-      await db.collection(COLLECTION).add({
+      const addRes = await db.collection(COLLECTION).add({
         data: { ...parsed.style, sort: countRes.total, createTime: db.serverDate() },
       });
-      return { success: true, message: '已添加妆造' };
+      return {
+        success: true,
+        message: '已添加妆造',
+        // 回传新增的那条（含 add() 生成的真实 _id），客户端可以本地插入而不是重新 list
+        style: toStyleDoc(parsed.style, (addRes && addRes._id) || ''),
+      };
     }
 
     if (action === 'update') {
@@ -132,17 +155,27 @@ exports.main = async (event) => {
 
       const res = await db.collection(COLLECTION).doc(styleId).update({ data: parsed.style });
       if (res.stats.updated !== 1) return { success: false, message: '妆造不存在' };
-      return { success: true, message: '已保存修改' };
+      return { success: true, message: '已保存修改', style: toStyleDoc(parsed.style, styleId) };
     }
 
     if (action === 'delete') {
       const { styleId } = event;
       if (!styleId) return { success: false, message: '参数不完整' };
+      // 先读名字再删：回传给客户端做本地移除，它拿不到整条文档，
+      // 少了名字就没法在「删除妆造？」弹窗里回显是哪一条
+      let name = '';
+      try {
+        const before = await db.collection(COLLECTION).doc(styleId).get();
+        name = (before.data && before.data.name) || '';
+      } catch (e) {
+        // 读不到就当不存在，交给下面的 remove 判「妆造不存在」
+        return { success: false, message: '妆造不存在' };
+      }
       const res = await db.collection(COLLECTION).doc(styleId).remove();
       // 注意：云开发 doc().remove() 返回的计数是 stats.removed（不是 deleted）
       const removed = (res.stats && (res.stats.removed != null ? res.stats.removed : res.stats.deleted)) || 0;
       if (removed !== 1) return { success: false, message: '妆造不存在' };
-      return { success: true, message: '已删除妆造' };
+      return { success: true, message: '已删除妆造', style: { _id: styleId, name } };
     }
 
     return { success: false, message: '无效操作' };

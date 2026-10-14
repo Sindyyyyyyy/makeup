@@ -20,6 +20,15 @@ function formatDateTime(d) {
   return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
+// 统计卡片按状态计数，和筛选用的是同一份口径，抽出来给加载与本地打补丁共用
+function countByStatus(bookings) {
+  const stats = { pending: 0, confirmed: 0, completed: 0, rejected: 0, cancelled: 0 };
+  bookings.forEach(b => {
+    if (Object.prototype.hasOwnProperty.call(stats, b.status)) stats[b.status]++;
+  });
+  return stats;
+}
+
 Component({
   properties: {
     // 宿主传进来的当前模式（'admin'）。仅作语义标识，加载逻辑不依赖它——
@@ -79,14 +88,19 @@ Component({
     // 宿主下拉刷新时调用。必须返回整条链，否则 pages/index.onPullDownRefresh
     // 会立刻 stopPullDownRefresh，列表空白直到静默重签落地。
     // 课程表一并刷新：她下拉多半是为了看新时段或新预约，两者都要看到同一时刻的状态。
+    //
+    // 令牌确认之后，预约列表与课程表互不依赖（不同云函数、不同集合），
+    // 串行只是白等一个完整往返——并发发出后下拉刷新的等待时间直接砍半。
     refresh() {
-      return this.ensureSession()
-        .then((ok) => (ok ? this.loadBookings() : undefined))
-        .then(() => this.reloadScheduleGrid());
+      return this.ensureSession().then((ok) => {
+        if (!ok) return undefined;
+        return Promise.all([this.loadBookings(), this.reloadScheduleGrid()]).then(() => {});
+      });
     },
 
     // 课程表组件可能还没渲染出来（首帧 isAdmin 还是 false），取不到就跳过。
-    // 不带 withStyles：下拉刷新没必要重拉妆造库，省一次云函数调用
+    // reload() 只重拉时段表；妆造库在组件 attached 时就走过 styleCache，这里
+    // 再拉一遍是重复的。
     reloadScheduleGrid() {
       const c = this.selectComponent('#scheduleGrid');
       return c ? c.reload() : Promise.resolve();
@@ -209,15 +223,10 @@ Component({
           }));
           const bookings = append ? this.data.bookings.concat(mapped) : mapped;
 
-          const stats = { pending: 0, confirmed: 0, completed: 0, rejected: 0, cancelled: 0 };
-          bookings.forEach(b => {
-            if (Object.prototype.hasOwnProperty.call(stats, b.status)) stats[b.status]++;
-          });
-
           this.setData({
             isAdmin: true,
             bookings,
-            stats,
+            stats: countByStatus(bookings),
             page,
             hasMore: !!res.result.hasMore,
           });
@@ -253,6 +262,15 @@ Component({
         ? bookings
         : bookings.filter(b => b.status === filterStatus);
       this.setData({ filtered });
+    },
+
+    // 状态翻转后就地改那一条记录 + 重算统计 + 走一遍筛选。
+    // 处于筛选视图时那条会从当前列表里消失，这是对的——它已经不属于这个筛选条件了。
+    patchBookingStatus(id, status) {
+      const bookings = this.data.bookings.map(b => (b._id === id ? { ...b, status } : b));
+      this.setData({ bookings, stats: countByStatus(bookings) }, () => {
+        this.applyFilter();
+      });
     },
 
     // 查看顾客的个人信息（只读）。资料以云端为准，每次点开都重新拉
@@ -348,7 +366,19 @@ Component({
         });
         if (res.result && res.result.success) {
           wx.showToast({ title: res.result.message || '操作成功', icon: 'success' });
-          this.loadBookings();
+          // 就地改这一条，不重拉整页：那一次 loadBookings 是一次云函数调用
+          // 外加 50 条 booking 文档过桥，而要变的字段（status）本来就在本地。
+          // 新状态由 adminUpdateBooking 回传（status 字段），比在客户端复刻
+          // 状态机可靠——万一以后加了新动作，客户端不会算错。
+          //
+          // 课程表里那个时段的占用标记仍旧是旧的，原来也是这样：doAction 只重拉
+          // 了预约列表。下拉刷新会同时刷两者（见 refresh()），数据不会长期漂移。
+          if (res.result.status) {
+            this.patchBookingStatus(id, res.result.status);
+          } else {
+            // 兜底：万一部署的还是旧版云函数（没有 status 字段），退回原来的行为
+            this.loadBookings();
+          }
         } else if (res.result && res.result.code === 'UNAUTHORIZED') {
           await this.handleAuthFail();
         } else {

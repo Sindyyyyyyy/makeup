@@ -92,14 +92,15 @@ exports.main = async (event) => {
 
   try {
     const open = action === 'open';
+    let finalSlot = null;   // 写完之后这个时段的真实状态，回传给客户端打补丁
 
     // 查找是否已有该日期记录
     const existing = await db.collection('timeSlots').where({ date }).limit(1).get();
     const record = existing.data && existing.data[0];
 
     if (record) {
-      const current = record[slot];
-      const isBooked = !!(current && current.booked);
+      const current = record[slot] || {};
+      const isBooked = !!current.booked;
 
       // 关闭时若该时段仍有预约，释放 booked 会造成重复预约，必须拦截
       if (!open && isBooked) {
@@ -126,6 +127,16 @@ exports.main = async (event) => {
           ...(open ? {} : { [`${slot}.booked`]: false }),
         }
       });
+
+      // 写完之后这个时段的真实状态。回传它，客户端就能就地更新那一个格子，
+      // 不必为了验证「妆造到底有没有落库」再把整周时段表重拉一遍。
+      finalSlot = {
+        open,
+        booked: open ? isBooked : false,
+        done: !!current.done,
+        // 没传 styles 时保持原样——「只开关时段不改妆造」是合法操作
+        styles: cleanStyles || (Array.isArray(current.styles) ? current.styles : []),
+      };
     } else {
       // 新建：其余时段默认关闭
       const initData = {
@@ -136,12 +147,19 @@ exports.main = async (event) => {
       };
       initData[slot] = { open, booked: false, done: false, ...(cleanStyles ? { styles: cleanStyles } : {}) };
       await db.collection('timeSlots').add({ data: initData });
+
+      finalSlot = {
+        open,
+        booked: false,
+        done: false,
+        styles: cleanStyles || [],
+      };
     }
 
     const msg = open
       ? `已开放 ${SLOT_NAMES[slot]} 预约`
       : `已关闭 ${SLOT_NAMES[slot]} 预约`;
-    return { success: true, message: msg };
+    return { success: true, message: msg, date, slot, slotState: finalSlot };
   } catch (err) {
     console.error('adminSetTimeSlot error:', err);
     return { success: false, message: '服务器错误：' + err.message };

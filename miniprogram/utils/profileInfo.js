@@ -58,6 +58,49 @@ function isComplete(info, opts) {
   return missingFields(info, opts).length === 0;
 }
 
+// 两份表单是否逐字段相同（含 photos 数组，按顺序比较）。
+// 用途：预约前的「确认资料」弹窗里，顾客经常什么都不改就点提交，
+// 那时不必再发一次 userProfile saveInfo —— 云函数调用次数是稀缺的资源。
+// 只比 emptyForm() 的键集合：info 里可能混入 nickname 之类不该参与比较的字段，
+// 多比一个字段就可能让本该跳过的写入重新发生。
+function sameForm(a, b) {
+  const x = toForm(a);
+  const y = toForm(b);
+  const keys = Object.keys(emptyForm());
+  for (const k of keys) {
+    if (k === 'photos') {
+      const pa = x.photos || [];
+      const pb = y.photos || [];
+      if (pa.length !== pb.length) return false;
+      for (let i = 0; i < pa.length; i++) {
+        if (pa[i] !== pb[i]) return false;
+      }
+      continue;
+    }
+    if (String(x[k] || '').trim() !== String(y[k] || '').trim()) return false;
+  }
+  return true;
+}
+
+// 「资料上次从云端拉取的时间」放在 storage，而不是页面实例字段上。
+// 首页和个人中心是两个 tab 页，各有各的实例字段、互相看不见：原来两边各发一次
+// userProfile{action:'get'}，拿回来的还是同一份数据。共用一个时间戳后，
+// 60 秒内第二个 tab 打开就只读 storage 缓存（两边的 onLoad 都已经渲染过它了）。
+const FETCHED_AT_KEY = 'profile_fetched_at';
+
+function fetchedAt() {
+  return wx.getStorageSync(FETCHED_AT_KEY) || 0;
+}
+
+function markFetched() {
+  wx.setStorageSync(FETCHED_AT_KEY, Date.now());
+}
+
+// 保存资料后必须清零，否则下一次打开看到的是刚被自己覆盖掉的旧值
+function clearFetched() {
+  wx.removeStorageSync(FETCHED_AT_KEY);
+}
+
 module.exports = {
   MAX_PHOTOS,
   MIN_PHOTOS_FOR_BOOKING,
@@ -68,4 +111,8 @@ module.exports = {
   toForm,
   missingFields,
   isComplete,
+  sameForm,
+  fetchedAt,
+  markFetched,
+  clearFetched,
 };

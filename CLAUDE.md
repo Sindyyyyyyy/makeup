@@ -66,7 +66,8 @@ There is no custom component other than `components/infoForm`, `components/admin
 约定（与 `infoForm` 同一套）：
 
 - 组件方法**必须**挂在 `methods` 下，`attached()` 里做首拉（`adminListSlots` + `adminStyles`）。自定义组件样式默认 `styleIsolation: isolated`，所以宿主 adminPanel 的 `.btn-primary` / `.container` 与组件内的同名类互不干扰，两个 `.wxss` 里出现同名类是安全的。
-- 宿主用 `selectComponent('#scheduleGrid').reload({ withStyles })` 驱动重拉；`reload` 返回 Promise。`adminSlots.onShow` 传 `withStyles: true`（从妆容管理返回时快捷妆造可能增减），`adminPanel.refresh()` 不传（下拉刷新省一次 `adminStyles`）。**取不到组件要容错**——首帧 `isAdmin` 还是 false 时子组件尚未渲染。
+- 宿主用 `selectComponent('#scheduleGrid').reload()` 驱动重拉；`reload` 返回 Promise，**只重拉时段表**（妆造库由 `styleCache` 在 `attached()` 时拉一次，见「调用次数」一节）。**取不到组件要容错**——首帧 `isAdmin` 还是 false 时子组件尚未渲染；`adminSlots.onShow` 的首次调用正是这种情况，真正的首拉由 `attached()` 负责，不会重复发请求。
+- 开关时段 / 保存妆造后**不要 `loadSlots()`**：云函数回传 `slotState`，用 `patchCell()` 就地改那一个格子。见「调用次数」一节。
 - 令牌失效时组件**只 toast 并 `triggerEvent('authfail')`，绝不清本地登录状态**：后台首页的 `handleAuthFail()` 要先静默重签，组件自己 `removeStorageSync` 会把那扇门掐断。页面的 `handleAuthFail` 才调 `clearAdmin()`。
 - `info-form` 由组件自己的 `.json` 注册（弹窗需要），`adminSlots.json` 里不再有它。
 
@@ -118,6 +119,37 @@ Concurrency: `createBooking` claims a slot with a conditional single-document up
 ### 妆造 (makeup styles) pricing
 
 Per-slot 妆造 options and prices are configured by the admin (后台首页课程表 或 `adminSlots` 课程表，同一份组件) and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
+
+### 调用次数：缓存与本地打补丁
+
+免费额度每月 20 万次，不是随便花的。原则：**能本地改就别重拉，能并行就别串行；只有低风险数据才进缓存。**
+
+**不缓存实时状态。** `bookings` / `timeSlots` 一律每次现拉 —— 刚放开的时段、刚确认的预约必须立刻看到，缓存会让化妆师对着过期的界面做决定。已有的节流口子在 `pages/index`（`LOAD_TTL` 60s，仅覆盖切 tab 往返）。
+
+**只缓存两样东西**，都在 `storage` 里，TTL 到期或写操作发生时自动失效：
+
+- **妆造库** → `miniprogram/utils/styleCache.js`（TTL 5 分钟）。`scheduleGrid` 和 `pages/adminStyles` 共用一份，不再各拉一次。妆容管理页每次增删都经 `applyLocalStyles` → `saveStyles` 把新列表写回缓存（连时间戳一起刷新），所以「刚改完就返回时段管理」拿到的必然是最新的一份 —— 这就是 `scheduleGrid.reload()` 不需要 `withStyles` 参数的原因。手动下拉刷新传 `{maxAgeMs: 0}` 绕过缓存。缓存**只存妆造列表，不存令牌**，也不绕过服务端的 `UNAUTHORIZED`。
+- **注意事项图的 https 临时链接** → `pages/index` 里的 `NOTICE_CACHE_KEY`（TTL 90 分钟，链接本身约 2 小时过期）。
+
+**改完就地打补丁，不要重拉整表。** 三个云函数会把刚写进去的那一条回传，客户端据此更新本地对象：
+
+| 操作 | 云函数回传 | 客户端 |
+|---|---|---|
+| 确认/拒绝/标记完成 | `adminUpdateBooking` → `status` | `adminPanel.patchBookingStatus()` |
+| 开关时段 / 保存妆造 | `adminSetTimeSlot` → `date`/`slot`/`slotState` | `scheduleGrid.patchCell()` |
+| 妆造增删改 | `adminStyles` → `style`（含 `_id`） | `adminStyles.applyLocalStyles()` |
+
+云函数**不返回 `sort`**：`add` 用「当前条数」当 sort、`update` 压根不碰它，两种都得由客户端从本地列表推算（新增排末尾、修改保持原位）。所有客户端改动都写了兜底：响应里没有对应字段（部署的还是旧版云函数）就退回原来的全量拉取，行为和以前完全一样。
+
+`adminSetTimeSlot` 的 `slotState` 同时充当**新版本检测** —— 旧版函数会静默丢掉 `styles` 且不回传该字段，`saveStyles` 见到它缺失就弹窗提示重新部署。
+
+**别把 `booking` 从 `pages/index` 的 `myBookings` 里裁掉** —— 首页「我的预约」历史列表真的要渲染它，`listWeekSchedule` 一次返回已经合并了两次调用。
+
+**资料节流时间戳放在 storage 而不是页面实例字段**（`utils/profileInfo.js` 的 `fetchedAt/markFetched/clearFetched`）：首页和个人中心是两个 tab，实例字段互相看不见，共用一个才能真正只拉一次。任何写入资料的地方都要 `clearFetched()`。
+
+**`pages/index` 的 `onSaveInfo` 会跳过空写**：confirm（预约）路径下，若表单与 `user_info` 缓存逐字段相同（`sameForm`），就不发 `userProfile saveInfo` 直接下单。老顾客复购时这是纯浪费的一次写入。**view（「详细信息」）路径必须照常写库**，否则她改了资料看不到效果。本地缓存万一已经过期，`createBooking` 会返回 `PROFILE_INCOMPLETE` 并回显缺项，不会漏。
+
+**`refresh()` 里令牌确认之后的两个请求要并发** —— 预约列表和课程表互不依赖，串行只是白等一个完整往返（`Promise.all`）。但 `ensureSession` 必须在前面，因为它决定后面还发不发。
 
 ### 订阅消息 (subscribe message)
 

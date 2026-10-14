@@ -81,7 +81,7 @@
       </view>
     </view>
 
-    <view wx:for="{{modalStyles}}" wx:key="*this" class="style-row">
+    <view wx:for="{{modalStyles}}" wx:key="index" class="style-row">
       <input class="style-name-input" placeholder="妆造名称，如 日常通勤妆"
              value="{{item.name}}" data-idx="{{index}}" bindinput="onStyleNameInput" maxlength="20"
              disabled="{{modalBooked}}" />

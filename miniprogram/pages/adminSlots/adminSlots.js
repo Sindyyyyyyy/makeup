@@ -13,10 +13,9 @@ Page({
   },
 
   onShow() {
-    if (this.data.isAdmin) {
-      // withStyles：从「妆容管理」返回时快捷妆造可能已增减，要连妆造库一起重拉
-      this.reloadGrid({ withStyles: true });
-    }
+    if (!this.data.isAdmin) return;
+    // 只重拉时段表（实时状态，每次都要新）。妆造库由 styleCache 负责，见 reloadGrid 注释。
+    this.reloadGrid();
   },
 
   onPullDownRefresh() {
@@ -27,10 +26,12 @@ Page({
     }
   },
 
-  // 组件可能还没渲染完（未登录分支时它不存在），取不到就当无事发生
-  reloadGrid(opts) {
+  // 组件可能还没渲染完（未登录分支时它不存在），取不到就当无事发生。
+  // 首次 navigateTo 时组件尚未 attached，这次调用是空操作，真正的首拉由
+  // scheduleGrid.attached() 负责——不会重复发请求。
+  reloadGrid() {
     const c = this.selectComponent('#scheduleGrid');
-    return c ? c.reload(opts) : Promise.resolve();
+    return c ? c.reload() : Promise.resolve();
   },
 
   // 组件发现令牌失效：清掉已作废的本地身份，切到未登录提示。

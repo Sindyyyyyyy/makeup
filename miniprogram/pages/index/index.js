@@ -2,12 +2,19 @@
 // 按身份渲染两套完全不同的界面：顾客看预约课表，化妆师看管理后台。
 // 视图模式由 utils/role.js 的 currentMode() 判定（admin_token 与 admin_mode 分离）。
 const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
-const { emptyForm, toForm, missingFields } = require('../../utils/profileInfo');
+const { emptyForm, toForm, missingFields, sameForm, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
 const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
 
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
 const LOAD_TTL = 60 * 1000;
+
+// 「化妆注意事项」临时链接的本地缓存。
+// getNoticeImage 不查数据库，只把一个固定的云存储 fileID 换成 https 临时链接，
+// 而链接约 2 小时后才过期——每次预约都换一次是纯浪费的云函数调用。
+// TTL 取 1.5 小时留出余量，避免卡在过期边界上给顾客一张打不开的图。
+const NOTICE_CACHE_KEY = 'notice_img_cache';
+const NOTICE_TTL = 90 * 60 * 1000;
 
 Page({
   data: {
@@ -45,7 +52,6 @@ Page({
     // 本地有过变更（下单/取消）需要下次进入时强制重拉
     this._loadedAt = 0;
     this._dirty = false;
-    this._profileFetchedAt = 0;
     this.applyMode(currentMode());
   },
 
@@ -225,7 +231,9 @@ Page({
     }
     // 节流：点格子→提交预约这一串手势会连着调两次 loadProfile，
     // TTL 内直接用本地缓存，不再发云函数。保存资料后时间戳会被清掉。
-    if (Date.now() - (this._profileFetchedAt || 0) < LOAD_TTL) return;
+    // 时间戳存在 storage 里，个人中心那个 tab 也共用它——两个 tab 各发一次
+    // userProfile{get} 是纯粹的重复，那边已经渲染好同一份 storage 缓存了。
+    if (Date.now() - fetchedAt() < LOAD_TTL) return;
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
@@ -233,7 +241,7 @@ Page({
       });
       const r = res.result;
       if (!r || !r.success || !r.profile) return;
-      this._profileFetchedAt = Date.now();
+      markFetched();
       const nickname = r.profile.nickname || '';
       if (nickname && nickname !== this.data.nickname) this.setData({ nickname });
       const info = toForm(r.info, nickname);
@@ -271,17 +279,39 @@ Page({
 
   noop() {},
 
-  // 预约成功后弹注意事项图。临时链接约 2 小时过期，所以每次弹出都重新取一次；
-  // 取不到就退回包内那张兜底图（本地图长按存不了，但至少不会白框）。
-  async openNotice() {
+  // 预约成功后弹注意事项图。
+  //
+  // 顺序讲究：先用缓存或包内兜底图把弹窗点亮，**不等网络**。原实现是先 await
+  // 一次云函数再 setData showNotice，弹窗被整趟往返卡住；包里已经有
+  // /images/notice.jpg 兜底，完全没有理由让顾客对着空白等一秒。
+  openNotice() {
+    const cached = this.cachedNoticeUrl();
+    this.setData({
+      showNotice: true,
+      noticeImg: cached || this.data.noticeImg || '/images/notice.jpg',
+    });
+    // 缓存没命中才去换链接；换回来后静默替换，弹窗已经在了
+    if (!cached) this.fetchNoticeUrl();
+  },
+
+  // 返回一个仍在有效期内的临时链接，没有则返回空串
+  cachedNoticeUrl() {
+    const c = wx.getStorageSync(NOTICE_CACHE_KEY);
+    if (c && c.url && Date.now() - (c.at || 0) < NOTICE_TTL) return c.url;
+    return '';
+  },
+
+  async fetchNoticeUrl() {
     try {
       const res = await wx.cloud.callFunction({ name: 'getNoticeImage' });
-      const url = res && res.result && res.result.success ? res.result.url : '';
-      if (url) this.setData({ noticeImg: url });
+      const r = res && res.result;
+      if (!r || !r.success || !r.url) return;
+      wx.setStorageSync(NOTICE_CACHE_KEY, { url: r.url, at: Date.now() });
+      this.setData({ noticeImg: r.url });
     } catch (err) {
+      // 保持包内兜底图：它至少显示得出来，只是长按存不到相册
       console.error('getNoticeImage failed:', err);
     }
-    this.setData({ showNotice: true });
   },
 
   closeNotice() {
@@ -338,6 +368,21 @@ Page({
     }
 
     const form = e.detail.info || {};
+    const isConfirm = this.data.infoMode === 'confirm';
+
+    // 老顾客复购时这份表往往一个字都没改，而 saveInfo 是一次实打实的云函数
+    // 调用，写进去的内容和库里完全一样。资料没变就跳过，直接去下单。
+    //
+    // 只在 confirm（预约）路径上跳过：「详细信息」那条路的保存**必须**落库，
+    // 否则她改了资料会看不到任何效果。
+    // 万一本地缓存其实已经过期而云端判定不完整，createBooking 会返回
+    // PROFILE_INCOMPLETE，页面会重新拉一次云端并把缺项回显出来——不会漏。
+    if (isConfirm && sameForm(form, wx.getStorageSync('user_info'))) {
+      this.setData({ showInfo: false });
+      await this.doCreateBooking();
+      return;
+    }
+
     this.setData({ submitting: true });
     const formCmp = this.selectComponent('#infoForm');
     if (formCmp) formCmp.setSubmitting(true);
@@ -355,10 +400,10 @@ Page({
       this.setData({ info });
       wx.setStorageSync('user_info', info);
       // 资料刚变过，下次读资料必须回云端
-      this._profileFetchedAt = 0;
+      clearFetched();
       this.setData({ showInfo: false });
       // 预约前确认才接着下单；单看详情只保存
-      if (this.data.infoMode === 'confirm') {
+      if (isConfirm) {
         await this.doCreateBooking();
       } else {
         wx.showToast({ title: '已更新', icon: 'success' });
