@@ -27,18 +27,25 @@
       </view>
       <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
         <view wx:if="{{grid[slot._idx][date._idx]}}"
-              class="slot-btn {{grid[slot._idx][date._idx].open ? (grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? 'done' : 'booked') : 'open') : 'closed'}} {{date.isPast ? 'disabled' : ''}}"
+              class="slot-btn {{grid[slot._idx][date._idx].open ? (grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? 'done' : 'booked') : 'open') : 'closed'}} {{grid[slot._idx][date._idx].past ? 'past' : ''}}"
               bindtap="onSlotToggle"
               data-date="{{date.date}}"
               data-slot="{{slot.key}}"
-              data-past="{{date.isPast}}">
-          <block wx:if="{{grid[slot._idx][date._idx].open}}">
-            <text>{{grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? '已完成' : '已预约') : '开放中'}}</text>
-            <text wx:if="{{grid[slot._idx][date._idx].styles.length > 0}}" class="style-count">
-              {{grid[slot._idx][date._idx].styles.length}}个妆造
-            </text>
+              data-past="{{grid[slot._idx][date._idx].past}}"
+              data-expired="{{grid[slot._idx][date._idx].expired}}">
+          <!-- 已过去的日期（除已完成外）一律显示「时段已过」并置灰 -->
+          <block wx:if="{{grid[slot._idx][date._idx].past}}">
+            <text>🚫 时段已过</text>
           </block>
-          <text wx:else>点击开放</text>
+          <block wx:else>
+            <block wx:if="{{grid[slot._idx][date._idx].open}}">
+              <text>{{grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? '已完成' : '已预约') : '开放中'}}</text>
+              <text wx:if="{{grid[slot._idx][date._idx].styles.length > 0}}" class="style-count">
+                {{grid[slot._idx][date._idx].styles.length}}个妆造
+              </text>
+            </block>
+            <text wx:else>点击开放</text>
+          </block>
         </view>
       </view>
     </view>
@@ -53,6 +60,8 @@
     <view class="tips-item">· 开放后顾客即可预约该时段，并在下单时选择妆造</view>
     <view class="tips-item">· 已有预约的时段无法关闭，请先在预约列表中处理</view>
     <view class="tips-item">· 已完成的时段默认不可点击，妆造与状态均已锁定</view>
+    <view class="tips-item">· 今天以前的时段除「已完成」外一律显示「时段已过」，不再接受修改</view>
+    <view class="tips-item">· 当天已过结束时刻且无人预约的时段（如 11 点后的上午）也显示「时段已过」；已预约/已完成的仍保留原状态，方便查看和处理</view>
   </view>
 </view>
 

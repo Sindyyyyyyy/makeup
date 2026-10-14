@@ -128,6 +128,13 @@
   color: #1976D2;
   border: 2rpx solid #90CAF9;
 }
+/* 已过去的日期：和顾客端首页一致，置灰 + 虚线，排在最后以便覆盖 open/booked/closed */
+.slot-btn.past {
+  background: #FAFAFA;
+  color: #CCC;
+  border: 2rpx dashed #E8E8E8;
+  font-size: 20rpx;
+}
 .style-count {
   font-size: 18rpx;
   opacity: 0.75;

@@ -2,7 +2,7 @@
 // 时段管理页 pages/adminSlots 与化妆师后台首页 components/adminPanel 共用这一份，
 // 两边的开关时段 / 设妆造 / 看顾客详情行为因此天然一致。
 // 方法必须放在 methods 下：Component 会静默丢弃顶层方法。
-const { SLOT_DEFS, computeWeekDates } = require('../../utils/slots.js');
+const { SLOT_DEFS, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { isLoggedIn } = require('../../utils/role.js');
 const styleCache = require('../../utils/styleCache.js');
 
@@ -11,13 +11,31 @@ const TOKEN_KEY = 'admin_token';
 // 网格单元格的统一形状。buildGrid（整周拉取）和 patchCell（改完一处就地打补丁）
 // 共用这个函数，两条路径产出的结构必须完全一致，否则打补丁的格子会和别的格子
 // 在视图层长得不一样。
-function toCell(slotState) {
+//
+// past 是「这一格不该再改了」，跟 open/booked/done 无关，显示成「时段已过」并置灰
+// （和顾客端首页一致）。两种来源：
+//   1. pastDate —— 整个日期已经过去了。除「已完成」外一律算。
+//   2. expiredSlot —— 就是今天，且这个时段的结束时刻已过（如上午 11 点后再看
+//      09:30-11:30）。没有预约的格子这时也翻篇了；已有预约或已完成的要留着，
+//      她还得靠这一格看到「这天有人来过」并去处理。
+//
+// 时段过了之后服务端还有定时结算（cloudfunctions/sweepOverdue）：
+// pending → rejected（booked 置回 false）、confirmed → completed（done 置 true），
+// 所以规则 1 落到的几乎总是这两种已结算状态，不必靠格子自己去猜。
+function toCell(slotState, pastDate, expiredSlot) {
   const s = (slotState && typeof slotState === 'object') ? slotState : null;
+  const open = !!(s && s.open);
+  const booked = !!(s && s.booked);
+  const done = !!(s && s.done);
   return {
-    open: !!(s && s.open),
-    booked: !!(s && s.booked),
-    done: !!(s && s.done),
+    open,
+    booked,
+    done,
     styles: s && Array.isArray(s.styles) ? s.styles : [],
+    past: done ? false : (!!pastDate || (!!expiredSlot && !booked)),
+    // 只表示「就是今天且这个时段的结束时刻已过」，整个日期过去的格子不算，
+    // 用来区分点击时给哪句提示
+    expired: !!expiredSlot && !pastDate,
   };
 }
 
@@ -134,13 +152,17 @@ Component({
     },
 
     buildGrid(tsMap) {
-      const dates = this.data.weekDates.map(d => d.date);
+      const dates = this.data.weekDates;
       const grid = [[], [], []];
       for (let s = 0; s < SLOT_DEFS.length; s++) {
         const slotKey = SLOT_DEFS[s].key;
         for (let d = 0; d < dates.length; d++) {
-          const ts = tsMap[dates[d]];
-          grid[s][d] = toCell(ts ? ts[slotKey] : null);
+          const ts = tsMap[dates[d].date];
+          grid[s][d] = toCell(
+            ts ? ts[slotKey] : null,
+            dates[d].isPast,
+            isSlotExpired(dates[d].date, slotKey),
+          );
         }
       }
       this.setData({ grid });
@@ -154,8 +176,11 @@ Component({
       const sIdx = SLOT_DEFS.findIndex(s => s.key === slot);
       const dIdx = this.data.weekDates.findIndex(d => d.date === date);
       if (sIdx < 0 || dIdx < 0) return;
+      const info = this.data.weekDates[dIdx];
+      const isPast = !!info.isPast;
+      const expired = isSlotExpired(info.date, slot);
       const grid = this.data.grid.map((row, i) => (
-        i === sIdx ? row.map((c, j) => (j === dIdx ? toCell(slotState) : c)) : row
+        i === sIdx ? row.map((c, j) => (j === dIdx ? toCell(slotState, isPast, expired) : c)) : row
       ));
       this.setData({ grid });
     },
@@ -171,9 +196,11 @@ Component({
     // ============ 妆造编辑 ============
     // 点击格子：未开放 → 填写妆造并开放；已开放 → 编辑已开放时段的妆造
     onSlotToggle(e) {
-      const { date, slot, past } = e.currentTarget.dataset;
+      const { date, slot, past, expired } = e.currentTarget.dataset;
       if (past) {
-        return wx.showToast({ title: '已过去的日期无需开放', icon: 'none' });
+        // 已过去的日期 vs 就是今天但这个时段已经过了——两种都说得通，给不同的提示
+        const title = expired ? '该时段今天已经过了' : '已过去的日期无需开放';
+        return wx.showToast({ title, icon: 'none' });
       }
       const slotDef = SLOT_DEFS.find(s => s.key === slot);
       const cell = this.findCell(date, slot);
