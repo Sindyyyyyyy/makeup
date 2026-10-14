@@ -23,8 +23,6 @@ Page({
     modalStyles: [],
     quickStyles: [],
     saving: false,
-    // 已预约时段的顾客（底部「详细信息」按钮要用的 openid）
-    modalBookings: [],
     // 只读顾客信息弹窗
     showUserProfile: false,
     userInfo: null,
@@ -185,75 +183,21 @@ Page({
       modalBooked: !!(cell && cell.booked),
       modalDone: !!(cell && cell.done),
       modalStyles: (cell && cell.styles ? cell.styles : []).map(s => ({ name: s.name, price: String(s.price) })),
-      // 上一个时段残留的顾客必须先清掉，否则新弹窗会显示别人的信息
-      modalBookings: [],
     });
-
-    // 时段文档里没有顾客信息，只能现查 bookings
-    if (cell && cell.booked) {
-      this.loadSlotBookings(date, slot);
-    } else {
-      this._bookingsPromise = null;
-    }
+    // 这里刻意不调任何云函数：打开弹窗只是一次本地渲染，
+    // 顾客资料等她真的点「详细信息」再查（云函数调用次数是稀缺的）
   },
 
-  // 拉该日期的所有预约，再在客户端按时段过滤（adminGetBookings 只按单字段 date
-  // 查询，slot 过滤放客户端可以避免 date+slot 组合查询的索引要求）
-  loadSlotBookings(date, slot) {
-    // 挂成实例字段：「详细信息」按钮可能在这次查询回来之前就被点到，
-    // 那时直接 await 它，而不是让按钮先消失再冒出来
-    this._bookingsPromise = this.fetchSlotBookings(date, slot);
-    return this._bookingsPromise;
-  },
-
-  async fetchSlotBookings(date, slot) {
-    try {
-      const res = await wx.cloud.callFunction({
-        name: 'adminGetBookings',
-        data: { token: wx.getStorageSync(TOKEN_KEY), date, pageSize: 100 },
-      });
-      const r = res.result;
-      if (r && r.success) {
-        const list = (r.bookings || [])
-          .filter(b => b.slot === slot && b.status !== 'rejected' && b.status !== 'cancelled')
-          .map(b => ({ _openid: b._openid, name: b.name, styleName: b.styleName, status: b.status }));
-        // 弹窗可能已经被关掉或切到别的时段了，丢弃这次迟到的结果
-        if (this.data.showStyleModal && this.data.modalDate === date && this.data.modalSlot === slot) {
-          this.setData({ modalBookings: list });
-        }
-      } else if (r && r.code === 'UNAUTHORIZED') {
-        this.handleAuthFail();
-      } else {
-        console.error('loadSlotBookings error:', r);
-      }
-    } catch (e) {
-      // 查不到顾客不该把已经打开的妆造弹窗关掉
-      console.error('loadSlotBookings error:', e);
-    }
-  },
-
-  // 底部「详细信息」：按钮常驻，点击时预约若还没查回来就先等这一次查询
+  // 「详细信息」：一次调用拿到「预约 + 顾客资料」。
+  // 顾客 openid 只存在 bookings 里，客户端拿不到，所以由 adminGetUserProfile
+  // 传 date+slot 让服务端自己去解析——比「先查 bookings 再查 users」少一次调用。
   async openFirstBookingDetail() {
-    const list = this.data.modalBookings;
-    if (!list.length && this._bookingsPromise) {
-      await this._bookingsPromise;
-    }
-    const target = this.data.modalBookings;
-    if (!target.length) {
-      return wx.showToast({ title: '未找到该时段的预约记录', icon: 'none' });
-    }
-    return this.openBookingDetail({ currentTarget: { dataset: { openid: target[0]._openid } } });
-  },
-
-  // 顾客信息（只读），与化妆师后台首页的「详细信息」同一个组件与同一份数据
-  async openBookingDetail(e) {
-    const openid = e.currentTarget.dataset.openid;
-    if (!openid) return;
+    const { modalDate, modalSlot } = this.data;
     wx.showLoading({ title: '加载中', mask: true });
     try {
       const res = await wx.cloud.callFunction({
         name: 'adminGetUserProfile',
-        data: { token: wx.getStorageSync(TOKEN_KEY), openid },
+        data: { token: wx.getStorageSync(TOKEN_KEY), date: modalDate, slot: modalSlot },
       });
       const r = res.result;
       if (!r || !r.success) {
@@ -263,6 +207,10 @@ Page({
           wx.showToast({ title: (r && r.message) || '读取失败', icon: 'none' });
         }
         return;
+      }
+      // 没有对应预约记录（历史脏数据：时段被占了但 bookings 里查无此单）
+      if (!r.booking) {
+        return wx.showToast({ title: '未找到该时段的预约记录', icon: 'none' });
       }
       this.setData({
         showUserProfile: true,
@@ -283,7 +231,7 @@ Page({
   },
 
   closeStyleModal() {
-    this.setData({ showStyleModal: false, showUserProfile: false, modalBookings: [] });
+    this.setData({ showStyleModal: false, showUserProfile: false });
   },
 
   noop() {},

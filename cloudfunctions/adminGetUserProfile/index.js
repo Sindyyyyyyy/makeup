@@ -54,16 +54,22 @@ function isOpenid(v) {
   return typeof v === 'string' && /^[A-Za-z0-9_-]{10,64}$/.test(v);
 }
 
-exports.main = async (event) => {
-  if (!verifyAdmin(event)) {
-    return { success: false, message: '权限验证失败，请重新登录', code: 'UNAUTHORIZED' };
-  }
+const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
 
-  const openid = event && event.openid;
-  if (!isOpenid(openid)) {
-    return { success: false, message: '缺少或无效的用户标识' };
-  }
+// 时段入口（date + slot）：时段管理页只知道「这天这个时段被预约了」，
+// 顾客 openid 只存在 bookings 里。与其让客户端先查 bookings 再带着 openid
+// 调一次（两次云函数调用），不如在这里一次查完——云函数调用次数是稀缺的。
+// 注意 .where({ date }) 是单字段查询：date+slot 的组合查询可能要求额外索引，
+// 所以 slot 的过滤放在内存里做。
+async function findBooking(date, slot) {
+  const res = await db.collection('bookings').where({ date }).limit(100).get();
+  return (res.data || []).find(
+    (b) => b.slot === slot && b.status !== 'rejected' && b.status !== 'cancelled'
+  ) || null;
+}
 
+// 读顾客资料：两个入口共用，返回结构一字不变
+async function readUserProfile(openid) {
   try {
     const res = await db.collection('users').doc(openid).get();
     const doc = res.data || {};
@@ -90,10 +96,50 @@ exports.main = async (event) => {
     };
   } catch (err) {
     const text = [err.errMsg, err.message].filter(Boolean).join(' | ');
-    // 集合或文档不存在：不是错误，返回“该顾客还没填资料”
+    // 集合或文档不存在：不是错误，返回"该顾客还没填资料"
     if (/-502005|-502003/.test(text) || /not exist/i.test(text)) {
       return { success: true, exists: false, profile: { avatarUrl: '', nickname: '' }, info: null };
     }
+    throw err;
+  }
+}
+
+exports.main = async (event) => {
+  if (!verifyAdmin(event)) {
+    return { success: false, message: '权限验证失败，请重新登录', code: 'UNAUTHORIZED' };
+  }
+
+  const date = event && event.date;
+  const slot = event && event.slot;
+
+  try {
+    // 入口二：按日期 + 时段找人（时段管理页用），openid 由服务端自己解析
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && SLOT_KEYS.indexOf(slot) >= 0) {
+      const hit = await findBooking(date, slot);
+      if (!hit) {
+        // 不是错误：可能只是历史脏数据（时段被占了但预约记录没了）
+        return { success: true, exists: false, booking: null, profile: null, info: null };
+      }
+      const res = await readUserProfile(hit._openid);
+      // 不回传 _openid：客户端拿到资料就够了，openid 是顾客身份，没必要外流
+      return Object.assign({}, res, {
+        booking: {
+          name: hit.name || '',
+          styleName: hit.styleName || '',
+          status: hit.status || '',
+          date: hit.date || date,
+          slot: hit.slot || slot,
+        },
+      });
+    }
+
+    // 入口一：直接按 openid 查（化妆师后台首页的预约卡片用）
+    const openid = event && event.openid;
+    if (!isOpenid(openid)) {
+      return { success: false, message: '缺少或无效的用户标识' };
+    }
+    return await readUserProfile(openid);
+  } catch (err) {
     console.error('adminGetUserProfile error:', err);
     return { success: false, message: '读取顾客资料失败' };
   }
