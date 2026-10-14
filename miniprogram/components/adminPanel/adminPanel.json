@@ -1,6 +1,7 @@
 {
   "component": true,
   "usingComponents": {
-    "info-form": "/components/infoForm/infoForm"
+    "info-form": "/components/infoForm/infoForm",
+    "schedule-grid": "/components/scheduleGrid/scheduleGrid"
   }
 }

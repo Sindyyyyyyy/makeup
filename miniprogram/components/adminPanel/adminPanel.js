@@ -78,8 +78,18 @@ Component({
 
     // 宿主下拉刷新时调用。必须返回整条链，否则 pages/index.onPullDownRefresh
     // 会立刻 stopPullDownRefresh，列表空白直到静默重签落地。
+    // 课程表一并刷新：她下拉多半是为了看新时段或新预约，两者都要看到同一时刻的状态。
     refresh() {
-      return this.ensureSession().then((ok) => (ok ? this.loadBookings() : undefined));
+      return this.ensureSession()
+        .then((ok) => (ok ? this.loadBookings() : undefined))
+        .then(() => this.reloadScheduleGrid());
+    },
+
+    // 课程表组件可能还没渲染出来（首帧 isAdmin 还是 false），取不到就跳过。
+    // 不带 withStyles：下拉刷新没必要重拉妆造库，省一次云函数调用
+    reloadScheduleGrid() {
+      const c = this.selectComponent('#scheduleGrid');
+      return c ? c.reload() : Promise.resolve();
     },
 
     // 登录表单在独立页 pages/adminLogin，这里只负责把人送过去

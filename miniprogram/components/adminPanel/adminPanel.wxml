@@ -49,6 +49,10 @@
       <view class="notify-btn" bindtap="enableNotify">{{notifyEnabled ? '再开启一次' : '开启'}}</view>
     </view>
 
+    <!-- 课程表：直接开关时段 / 设妆造 / 看顾客详情，不必跳「时段管理」页。
+         与 pages/adminSlots 共用 components/scheduleGrid，两个入口永远一致。 -->
+    <schedule-grid id="scheduleGrid" bind:authfail="handleAuthFail" />
+
     <!-- 统计 -->
     <view class="stats">
       <view class="stat-card">

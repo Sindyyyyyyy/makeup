@@ -1,6 +1,6 @@
 {
   "usingComponents": {
-    "info-form": "/components/infoForm/infoForm"
+    "schedule-grid": "/components/scheduleGrid/scheduleGrid"
   },
   "navigationBarTitleText": "时段管理"
 }

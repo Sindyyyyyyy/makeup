@@ -10,7 +10,7 @@ A WeChat Mini Program (微信小程序) for a makeup artist's appointment bookin
 
 Two halves that talk only through cloud functions:
 
-- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/adminLogin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (`infoForm`, `adminPanel`); a page must declare them in its own `.json` `usingComponents`. A component directory's files must be named after the directory (`adminPanel/adminPanel.js`), **not** `index.js` — `usingComponents` paths are resolved literally. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
+- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/adminLogin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (`infoForm`, `adminPanel`, `scheduleGrid`); a page must declare them in its own `.json` `usingComponents`. A component directory's files must be named after the directory (`adminPanel/adminPanel.js`), **not** `index.js` — `usingComponents` paths are resolved literally. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
 
 ### 双端首页（顾客 ⇄ 化妆师）
 
@@ -57,7 +57,18 @@ Since `currentMode()` ignores the token, a stale `admin_mode: 'admin'` with no t
 `app.json` defines a native two-item tabBar: `pages/index/index` (首页) and `pages/profile/profile` (个人中心). Tab pages are cached, so their `onLoad` runs only once — anything that must refresh on every visit belongs in `onShow` (`index` already reloads there, and re-reads `currentMode()` there because the artist may have switched sides from 个人中心). Navigate **between** tab pages with `wx.switchTab` only; `wx.navigateTo` fails on a tab page. `adminSlots`/`adminStyles` are not tabs and are reached from the dashboard via `wx.navigateTo`.
 - **Cloud functions** (`cloudfunctions/<name>/index.js`) — one directory per function, each with its own `package.json` depending on `wx-server-sdk ~2.6.3`. Every function starts with `cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })`; the env ID is hardcoded once in `miniprogram/app.js` (`globalData.env`).
 
-There is no custom component other than `components/infoForm` and `components/adminPanel`.
+There is no custom component other than `components/infoForm`, `components/adminPanel` and `components/scheduleGrid`.
+
+### 课程表组件 (components/scheduleGrid)
+
+时段的周导航 + 3×7 网格 + 点格子弹出的妆造编辑弹窗 + 弹窗里的只读顾客信息弹窗，全部收在这一个组件里，**`pages/adminSlots` 和 `components/adminPanel` 引用的是同一份**。后台首页把它放在「开启提醒」行和统计卡之间，开关时段/设妆造不必再跳页；首页的「时段管理」入口按钮保留（妆容管理仍需跳转）。`adminSlots` 因此瘦成只剩标题栏/未登录提示/返回的壳，课程表样式也从 `adminSlots.wxss` 挪进了组件。
+
+约定（与 `infoForm` 同一套）：
+
+- 组件方法**必须**挂在 `methods` 下，`attached()` 里做首拉（`adminListSlots` + `adminStyles`）。自定义组件样式默认 `styleIsolation: isolated`，所以宿主 adminPanel 的 `.btn-primary` / `.container` 与组件内的同名类互不干扰，两个 `.wxss` 里出现同名类是安全的。
+- 宿主用 `selectComponent('#scheduleGrid').reload({ withStyles })` 驱动重拉；`reload` 返回 Promise。`adminSlots.onShow` 传 `withStyles: true`（从妆容管理返回时快捷妆造可能增减），`adminPanel.refresh()` 不传（下拉刷新省一次 `adminStyles`）。**取不到组件要容错**——首帧 `isAdmin` 还是 false 时子组件尚未渲染。
+- 令牌失效时组件**只 toast 并 `triggerEvent('authfail')`，绝不清本地登录状态**：后台首页的 `handleAuthFail()` 要先静默重签，组件自己 `removeStorageSync` 会把那扇门掐断。页面的 `handleAuthFail` 才调 `clearAdmin()`。
+- `info-form` 由组件自己的 `.json` 注册（弹窗需要），`adminSlots.json` 里不再有它。
 
 ### Cloud database collections
 
@@ -85,7 +96,7 @@ Two `userProfile` actions write the doc, and they must stay separate: `save` (av
 
 `readonly` (admin only) makes chips/inputs/photo upload inert and swaps the footer for a single 关闭 button; the guards live in the JS handlers as well as the template. Data comes from the new `adminGetUserProfile` cloud function, which verifies the admin token (duplicated `verifyAdmin` block, per convention), validates the openid shape, and returns a **whitelisted** set of fields — never spread the raw `users` doc back. A missing record is `success:true, exists:false`, not an error, so the page shows "该顾客还没有填写个人信息".
 
-`adminGetUserProfile` has **two entry modes**: `openid` (dashboard booking cards) and `date`+`slot` (the 时段管理 "详细信息" button). The second exists purely to save 云函数调用次数 — 时段管理 only knows `booked: true`, and the customer's `_openid` lives solely in `bookings`, so a two-call client flow (adminGetBookings → adminGetUserProfile) becomes one call that resolves the booking server-side. It queries `.where({date})` only and filters `slot` in memory on purpose: a `date`+`slot` composite query may demand a new index. Nothing in the page prefetches bookings on modal open — opening the slot modal costs **zero** cloud calls, and the profile is fetched only when she taps 详细信息.
+`adminGetUserProfile` has **two entry modes**: `openid` (dashboard booking cards) and `date`+`slot` (课程表里的「详细信息」按钮). The second exists purely to save 云函数调用次数 — 时段管理 only knows `booked: true`, and the customer's `_openid` lives solely in `bookings`, so a two-call client flow (adminGetBookings → adminGetUserProfile) becomes one call that resolves the booking server-side. It queries `.where({date})` only and filters `slot` in memory on purpose: a `date`+`slot` composite query may demand a new index. Nothing in the page prefetches bookings on modal open — opening the slot modal costs **zero** cloud calls, and the profile is fetched only when she taps 详细信息.
 
 **Booking is gated on a complete profile, and the rule lives in two places that must agree:** `miniprogram/utils/profileInfo.js` (`missingFields(info, {requirePhoto})`) for the client, and `missingProfileFields(nickname, info)` in `cloudfunctions/createBooking/index.js` for the server. Required: 昵称, 性别, 肤质, 大面积爆痘, 整容/医美, 化妆品/发品过敏, plus conditional 敏感性程度 (only when 肤质=敏感性) and 过敏说明 (only when 过敏=有). For booking, 素颜照 needs ≥ 1; on 个人中心 photos stay optional. Both sides take `nickname` + `info` as separate args — never pass the whole user doc to the field-level helpers, that mistake reads as "everything missing".
 
@@ -106,7 +117,7 @@ Concurrency: `createBooking` claims a slot with a conditional single-document up
 
 ### 妆造 (makeup styles) pricing
 
-Per-slot 妆造 options and prices are configured by the admin in `adminSlots` and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
+Per-slot 妆造 options and prices are configured by the admin (后台首页课程表 或 `adminSlots` 课程表，同一份组件) and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
 
 ### 订阅消息 (subscribe message)
 

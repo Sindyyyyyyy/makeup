@@ -1,0 +1,117 @@
+<!-- components/scheduleGrid - 课程表本体（周导航 + 网格 + 妆造弹窗 + 顾客信息弹窗） -->
+<view class="schedule-wrap">
+  <!-- Week nav -->
+  <view class="week-nav">
+    <view class="nav-btn" bindtap="prevWeek">◀ 上周</view>
+    <view class="week-label">{{weekRange}}</view>
+    <view class="nav-btn" bindtap="nextWeek">下周 ▶</view>
+  </view>
+
+  <!-- 时段管理表格 -->
+  <view class="schedule">
+    <!-- 表头 -->
+    <view class="row header-row">
+      <view class="cell time-label"></view>
+      <view wx:for="{{weekDates}}" wx:key="date" class="cell date-header {{item.isPast ? 'past' : ''}}">
+        <view class="dow">{{item.dow}}</view>
+        <view class="date">{{item.dateLabel}}</view>
+        <view wx:if="{{item.isToday}}" class="today-tag">今天</view>
+      </view>
+    </view>
+
+    <!-- 时段行 -->
+    <view wx:for="{{slots}}" wx:for-item="slot" wx:key="key" class="row slot-row">
+      <view class="cell time-label">
+        <view class="slot-name">{{slot.name}}</view>
+        <view class="slot-time">{{slot.time}}</view>
+      </view>
+      <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
+        <view wx:if="{{grid[slot._idx][date._idx]}}"
+              class="slot-btn {{grid[slot._idx][date._idx].open ? (grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? 'done' : 'booked') : 'open') : 'closed'}} {{date.isPast ? 'disabled' : ''}}"
+              bindtap="onSlotToggle"
+              data-date="{{date.date}}"
+              data-slot="{{slot.key}}"
+              data-past="{{date.isPast}}">
+          <block wx:if="{{grid[slot._idx][date._idx].open}}">
+            <text>{{grid[slot._idx][date._idx].booked ? (grid[slot._idx][date._idx].done ? '已完成' : '已预约') : '开放中'}}</text>
+            <text wx:if="{{grid[slot._idx][date._idx].styles.length > 0}}" class="style-count">
+              {{grid[slot._idx][date._idx].styles.length}}个妆造
+            </text>
+          </block>
+          <text wx:else>点击开放</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{loading}}" class="loading-tip">加载中…</view>
+  </view>
+
+  <!-- 说明（仅时段管理页显示） -->
+  <view wx:if="{{showTips}}" class="tips">
+    <view class="tips-title">💡 操作说明</view>
+    <view class="tips-item">· 点击格子可开放/关闭该时段，并添加该时段可画的妆造与价格</view>
+    <view class="tips-item">· 开放后顾客即可预约该时段，并在下单时选择妆造</view>
+    <view class="tips-item">· 已有预约的时段无法关闭，请先在预约列表中处理</view>
+    <view class="tips-item">· 已完成的时段默认不可点击，妆造与状态均已锁定</view>
+  </view>
+</view>
+
+<!-- 妆造编辑弹窗 -->
+<view wx:if="{{showStyleModal}}" class="modal-mask" bindtap="closeStyleModal">
+  <view class="modal" catchtap="noop">
+    <view class="modal-title">{{modalSlotName}}</view>
+    <view class="modal-sub">
+      {{modalIsOpen ? '编辑该时段可画的妆造' : '开放该时段，并添加可画的妆造'}}
+    </view>
+
+    <view wx:if="{{modalBooked}}" class="booked-tip">
+      🔒 该时段已有预约，妆造与价格已锁定，不可修改
+    </view>
+
+    <view wx:if="{{!modalBooked}}" class="quick-wrap">
+      <text class="quick-title">从妆造库选择（妆容管理可维护）</text>
+      <view wx:if="{{quickStyles.length === 0}}" class="quick-empty">
+        妆造库为空，请先到「妆容管理」添加常用妆造
+      </view>
+      <view wx:else class="quick-row">
+        <view wx:for="{{quickStyles}}" wx:key="name" class="quick-btn {{modalStyles.length >= 10 ? 'disabled' : ''}}"
+              bindtap="onQuickStyle" data-idx="{{index}}">
+          {{item.name}} ¥{{item.price}}
+        </view>
+      </view>
+    </view>
+
+    <view wx:for="{{modalStyles}}" wx:key="*this" class="style-row">
+      <input class="style-name-input" placeholder="妆造名称，如 日常通勤妆"
+             value="{{item.name}}" data-idx="{{index}}" bindinput="onStyleNameInput" maxlength="20"
+             disabled="{{modalBooked}}" />
+      <view class="price-input-wrap">
+        <text class="yen">¥</text>
+        <input class="style-price-input" type="digit" placeholder="价格"
+               value="{{item.price}}" data-idx="{{index}}" bindinput="onStylePriceInput"
+               disabled="{{modalBooked}}" />
+      </view>
+      <view wx:if="{{!modalBooked}}" class="style-del" bindtap="removeStyleRow" data-idx="{{index}}">删除</view>
+    </view>
+
+    <view wx:if="{{!modalBooked}}" class="style-add" bindtap="addStyleRow">+ 添加妆造</view>
+
+    <view class="modal-buttons">
+      <button class="btn-secondary" bindtap="closeStyleModal">关闭</button>
+      <button wx:if="{{modalIsOpen}}" class="btn-danger" bindtap="closeSlot" loading="{{saving}}">关闭时段</button>
+      <button wx:if="{{modalBooked}}" class="btn-secondary" bindtap="openFirstBookingDetail">详细信息</button>
+      <button wx:if="{{!modalBooked}}" class="btn-primary" bindtap="saveStyles" loading="{{saving}}">{{modalIsOpen ? '保存妆造' : '保存并开放'}}</button>
+    </view>
+  </view>
+</view>
+
+<!-- 顾客信息（只读），与化妆师后台首页预约卡片的「详细信息」同一个组件 -->
+<info-form
+  visible="{{showUserProfile}}"
+  info="{{userInfo}}"
+  nickname="{{userNickname}}"
+  title="顾客信息"
+  hint="{{userInfoHint}}"
+  readonly="{{true}}"
+  bind:close="closeUserProfile"
+/>
