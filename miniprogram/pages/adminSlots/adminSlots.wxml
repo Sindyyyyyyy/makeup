@@ -108,7 +108,19 @@
     <view class="modal-buttons">
       <button class="btn-secondary" bindtap="closeStyleModal">关闭</button>
       <button wx:if="{{modalIsOpen}}" class="btn-danger" bindtap="closeSlot" loading="{{saving}}">关闭时段</button>
+      <button wx:if="{{modalBooked}}" class="btn-secondary" bindtap="openFirstBookingDetail">详细信息</button>
       <button wx:if="{{!modalBooked}}" class="btn-primary" bindtap="saveStyles" loading="{{saving}}">{{modalIsOpen ? '保存妆造' : '保存并开放'}}</button>
     </view>
   </view>
 </view>
+
+<!-- 顾客信息（只读），与化妆师后台首页的「详细信息」同一个组件 -->
+<info-form
+  visible="{{showUserProfile}}"
+  info="{{userInfo}}"
+  nickname="{{userNickname}}"
+  title="顾客信息"
+  hint="{{userInfoHint}}"
+  readonly="{{true}}"
+  bind:close="closeUserProfile"
+/>

@@ -23,6 +23,13 @@ Page({
     modalStyles: [],
     quickStyles: [],
     saving: false,
+    // 已预约时段的顾客（底部「详细信息」按钮要用的 openid）
+    modalBookings: [],
+    // 只读顾客信息弹窗
+    showUserProfile: false,
+    userInfo: null,
+    userNickname: '',
+    userInfoHint: '',
   },
 
   onLoad() {
@@ -178,11 +185,105 @@ Page({
       modalBooked: !!(cell && cell.booked),
       modalDone: !!(cell && cell.done),
       modalStyles: (cell && cell.styles ? cell.styles : []).map(s => ({ name: s.name, price: String(s.price) })),
+      // 上一个时段残留的顾客必须先清掉，否则新弹窗会显示别人的信息
+      modalBookings: [],
     });
+
+    // 时段文档里没有顾客信息，只能现查 bookings
+    if (cell && cell.booked) {
+      this.loadSlotBookings(date, slot);
+    } else {
+      this._bookingsPromise = null;
+    }
+  },
+
+  // 拉该日期的所有预约，再在客户端按时段过滤（adminGetBookings 只按单字段 date
+  // 查询，slot 过滤放客户端可以避免 date+slot 组合查询的索引要求）
+  loadSlotBookings(date, slot) {
+    // 挂成实例字段：「详细信息」按钮可能在这次查询回来之前就被点到，
+    // 那时直接 await 它，而不是让按钮先消失再冒出来
+    this._bookingsPromise = this.fetchSlotBookings(date, slot);
+    return this._bookingsPromise;
+  },
+
+  async fetchSlotBookings(date, slot) {
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'adminGetBookings',
+        data: { token: wx.getStorageSync(TOKEN_KEY), date, pageSize: 100 },
+      });
+      const r = res.result;
+      if (r && r.success) {
+        const list = (r.bookings || [])
+          .filter(b => b.slot === slot && b.status !== 'rejected' && b.status !== 'cancelled')
+          .map(b => ({ _openid: b._openid, name: b.name, styleName: b.styleName, status: b.status }));
+        // 弹窗可能已经被关掉或切到别的时段了，丢弃这次迟到的结果
+        if (this.data.showStyleModal && this.data.modalDate === date && this.data.modalSlot === slot) {
+          this.setData({ modalBookings: list });
+        }
+      } else if (r && r.code === 'UNAUTHORIZED') {
+        this.handleAuthFail();
+      } else {
+        console.error('loadSlotBookings error:', r);
+      }
+    } catch (e) {
+      // 查不到顾客不该把已经打开的妆造弹窗关掉
+      console.error('loadSlotBookings error:', e);
+    }
+  },
+
+  // 底部「详细信息」：按钮常驻，点击时预约若还没查回来就先等这一次查询
+  async openFirstBookingDetail() {
+    const list = this.data.modalBookings;
+    if (!list.length && this._bookingsPromise) {
+      await this._bookingsPromise;
+    }
+    const target = this.data.modalBookings;
+    if (!target.length) {
+      return wx.showToast({ title: '未找到该时段的预约记录', icon: 'none' });
+    }
+    return this.openBookingDetail({ currentTarget: { dataset: { openid: target[0]._openid } } });
+  },
+
+  // 顾客信息（只读），与化妆师后台首页的「详细信息」同一个组件与同一份数据
+  async openBookingDetail(e) {
+    const openid = e.currentTarget.dataset.openid;
+    if (!openid) return;
+    wx.showLoading({ title: '加载中', mask: true });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'adminGetUserProfile',
+        data: { token: wx.getStorageSync(TOKEN_KEY), openid },
+      });
+      const r = res.result;
+      if (!r || !r.success) {
+        if (r && r.code === 'UNAUTHORIZED') {
+          this.handleAuthFail();
+        } else {
+          wx.showToast({ title: (r && r.message) || '读取失败', icon: 'none' });
+        }
+        return;
+      }
+      this.setData({
+        showUserProfile: true,
+        userInfo: r.exists ? r.info : null,
+        userNickname: (r.profile && r.profile.nickname) || '',
+        userInfoHint: r.exists ? '顾客自己填写，以这里显示的为准' : '该顾客还没有填写个人信息',
+      });
+    } catch (e) {
+      console.error('读取顾客资料失败', e);
+      wx.showToast({ title: '读取失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  closeUserProfile() {
+    this.setData({ showUserProfile: false });
   },
 
   closeStyleModal() {
-    this.setData({ showStyleModal: false });
+    this.setData({ showStyleModal: false, showUserProfile: false, modalBookings: [] });
   },
 
   noop() {},

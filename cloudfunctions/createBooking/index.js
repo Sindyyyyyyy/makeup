@@ -14,8 +14,12 @@ const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 // 与 miniprogram/utils/notify.js 保持一致，改一处要改三处云函数。
 const TPL_ARTIST_NEW = 'OE7Sj4rWPKUfCvreIfadWG5r3SPAmxGjgGGhJt9WG4E';  // 顾客新预约 → 化妆师
 
-// 联调期填 'developer'（走体验版），上线前改成 'formal' 并重新部署。
-const MINI_STATE = 'developer';
+// 订阅消息卡片点开后打开哪个版本：
+//   'trial'   测试期用这个 —— 体验成员随时能打开，长期有效
+//   'formal'  正式上线前改成这个 —— 线上普通顾客只认这个
+//   'developer' 只在开发者工具扫码时有效，几分钟就过期，点卡片会提示
+//              「开发版小程序已过期」，所以不要用它给顾客测。
+const MINI_STATE = 'trial';
 
 const PAGE_HOME = 'pages/index/index'; // 无前导斜杠，须与 app.json 注册项逐字一致
 

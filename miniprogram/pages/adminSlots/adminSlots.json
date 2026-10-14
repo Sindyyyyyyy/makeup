@@ -1,4 +1,6 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "info-form": "/components/infoForm/infoForm"
+  },
   "navigationBarTitleText": "时段管理"
 }
