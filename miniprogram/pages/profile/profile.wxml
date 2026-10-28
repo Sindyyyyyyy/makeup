@@ -42,6 +42,19 @@
     </view>
   </view>
 
+  <!-- 化妆品管理入口：仅化妆师视图可见。角标只读 storage 缓存，
+       不为了这个数字发云函数调用（见 profile.js 的 refreshCosmeticBadge） -->
+  <view wx:if="{{isAdmin}}" class="card info-entry-card" bindtap="openCosmetics">
+    <view class="info-entry-left">
+      <view class="info-entry-title">化妆品管理</view>
+      <view class="info-entry-sub">种类、色号、效期与到期提醒</view>
+    </view>
+    <view class="info-entry-right">
+      <text class="info-entry-state" style="{{cosmeticStateColor}}">{{cosmeticState}}</text>
+      <text class="info-entry-arrow">›</text>
+    </view>
+  </view>
+
   <!-- 双端切换入口：化妆师和顾客看到的是同一个位置、文案相反 -->
   <view wx:if="{{!isAdmin}}" class="admin-entry" bindtap="goAdmin">
     <text>🌷 化妆师入口</text>

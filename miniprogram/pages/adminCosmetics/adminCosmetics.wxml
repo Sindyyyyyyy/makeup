@@ -1,0 +1,247 @@
+<view class="container">
+  <view class="page-header">
+    <view class="back-btn" bindtap="goBack">‹ 返回</view>
+    <text class="page-title">化妆品管理</text>
+    <view style="width:80rpx"></view>
+  </view>
+
+  <view wx:if="{{!isAdmin}}" class="login-tip">
+    <text>请先在「化妆师后台」登录后再管理化妆品</text>
+  </view>
+
+  <block wx:else>
+    <!-- 库存概览。统计的是未筛选的全库：它是库存健康度，不是当前结果条数 -->
+    <view class="summary">
+      <view class="sum-main">
+        <text class="sum-total">{{totalCount}}</text>
+        <text class="sum-unit">件</text>
+      </view>
+      <view class="sum-right">
+        <text class="sum-item {{expiredCount > 0 ? 'is-expired' : 'is-zero'}}">已过期 {{expiredCount}}</text>
+        <text class="sum-item {{soonCount > 0 ? 'is-soon' : 'is-zero'}}">临期 {{soonCount}}</text>
+      </view>
+    </view>
+
+    <!-- 搜索 + 筛选。全部本地计算，点这些按钮一次云调用都不发 -->
+    <view class="filters">
+      <view class="search-row">
+        <input class="search-input" placeholder="搜名称 / 品牌 / 色号"
+               value="{{keyword}}" bindinput="onKeywordInput" />
+        <view wx:if="{{keyword}}" class="search-clear" bindtap="clearKeyword">×</view>
+      </view>
+
+      <scroll-view class="chip-scroll" scroll-x enable-flex>
+        <view class="chip-row">
+          <view class="chip {{category === '' ? 'active' : ''}}" data-v="" bindtap="onCategoryChip">全部种类</view>
+          <view wx:for="{{categories}}" wx:key="*this" class="chip {{category === item ? 'active' : ''}}"
+                data-v="{{item}}" bindtap="onCategoryChip">{{item}}</view>
+        </view>
+      </scroll-view>
+
+      <scroll-view class="chip-scroll" scroll-x enable-flex>
+        <view class="chip-row">
+          <view class="chip {{style === '' ? 'active' : ''}}" data-v="" bindtap="onStyleChip">全部妆造</view>
+          <view wx:for="{{styleChips}}" wx:key="name" class="chip {{item.active ? 'active' : ''}}"
+                data-v="{{item.name}}" bindtap="onStyleChip">{{item.name}}</view>
+        </view>
+      </scroll-view>
+
+      <view class="filter-foot">
+        <view class="groupby">
+          <text class="filter-label">分类：</text>
+          <view wx:for="{{groupByOptions}}" wx:key="key"
+                class="tab {{groupBy === item.key ? 'active' : ''}}"
+                data-v="{{item.key}}" bindtap="onGroupBy">{{item.label}}</view>
+        </view>
+        <view class="toggle {{onlyUnused ? 'on' : ''}}" bindtap="toggleOnlyUnused">只看未用完</view>
+      </view>
+
+      <view wx:if="{{filterOn}}" class="filter-clear" bindtap="clearFilters">清空筛选条件</view>
+    </view>
+
+    <!-- 列表 -->
+    <view class="cos-list">
+      <view wx:if="{{loading && list.length === 0}}" class="empty">加载中…</view>
+      <view wx:elif="{{visibleCount === 0}}" class="empty">
+        <view wx:if="{{filterOn}}">没有符合筛选条件的化妆品</view>
+        <view wx:else>还没有化妆品，在下方添加吧 🌸</view>
+      </view>
+
+      <view wx:for="{{groups}}" wx:key="key" wx:for-item="group" class="group">
+        <view wx:if="{{groupBy !== 'none'}}" class="group-header">{{group.label}}（{{group.count}}）</view>
+
+        <view wx:for="{{group.items}}" wx:key="_id" wx:for-item="c" class="cos-card {{c.out ? 'out' : ''}}">
+          <image wx:if="{{c.photo}}" class="cos-photo" src="{{c.photo}}" mode="aspectFill" />
+          <view wx:else class="cos-photo cos-photo-empty">💄</view>
+
+          <view class="cos-main">
+            <view class="cos-top">
+              <text class="cos-name">{{c.name}}</text>
+              <text class="level-tag" style="color:{{c.levelColor}};background:{{c.levelBg}}">{{c.levelText}}</text>
+            </view>
+
+            <view class="cos-meta">
+              <text wx:if="{{c.brand}}">{{c.brand}}</text>
+              <text wx:if="{{c.category}}">{{c.category}}</text>
+              <text wx:if="{{c.shade}}">色号 {{c.shade}}</text>
+            </view>
+
+            <view class="cos-expiry lv-{{c.level}}">{{c.expiryText}}</view>
+
+            <view wx:if="{{c.activeStyles.length > 0}}" class="cos-tags">
+              <text wx:for="{{c.activeStyles}}" wx:key="*this" wx:for-item="s" class="mini-tag">{{s}}</text>
+            </view>
+
+            <view wx:if="{{c.note}}" class="cos-note">备注：{{c.note}}</view>
+
+            <view class="cos-foot">
+              <view class="qty">
+                <text class="qty-text {{c.out ? 'qty-out' : ''}}">余 {{c.remain}} / {{c.qty}}</text>
+                <view wx:if="{{!c.out}}" class="op-btn minus" data-id="{{c._id}}" bindtap="consume">用掉一支</view>
+              </view>
+              <view class="cos-ops">
+                <view class="op-btn" data-id="{{c._id}}" bindtap="startEdit">编辑</view>
+                <view class="op-btn danger" data-id="{{c._id}}" bindtap="deleteCosmetic">删除</view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 表单放底部：字段多，放顶部会把库存整个推出屏幕 -->
+    <view class="form-card" id="formCard">
+      <view class="form-title">{{editingId ? '编辑化妆品' : '添加化妆品'}}</view>
+
+      <view class="field">
+        <text class="field-label">名称<i>*</i></text>
+        <input class="form-input" placeholder="如 YSL 325" value="{{form.name}}"
+               data-k="name" bindinput="onFormInput" maxlength="30" />
+      </view>
+
+      <view class="field-row">
+        <view class="field half">
+          <text class="field-label">品牌</text>
+          <input class="form-input" placeholder="YSL" value="{{form.brand}}"
+                 data-k="brand" bindinput="onFormInput" maxlength="20" />
+        </view>
+        <view class="field half">
+          <text class="field-label">色号</text>
+          <input class="form-input" placeholder="#325" value="{{form.shade}}"
+                 data-k="shade" bindinput="onFormInput" maxlength="20" />
+        </view>
+      </view>
+
+      <view class="field">
+        <text class="field-label">种类<i>*</i></text>
+        <picker mode="selector" range="{{categories}}" value="{{categoryIndex}}"
+                bindchange="onCategoryPick">
+          <view class="form-input picker {{form.category ? '' : 'placeholder'}}">{{form.category || '请选择种类'}}</view>
+        </picker>
+      </view>
+
+      <view class="field">
+        <text class="field-label">适用妆造</text>
+        <view class="chip-row wrap">
+          <view wx:if="{{styleNames.length === 0}}" class="field-tip">妆造库是空的，先去「妆容管理」添加</view>
+          <view wx:for="{{formStyles}}" wx:key="name" wx:for-item="s"
+                class="chip {{s.active ? 'active' : ''}}" data-v="{{s.name}}" bindtap="toggleFormStyle">{{s.name}}</view>
+        </view>
+      </view>
+
+      <!-- 效期：两种录入方式任选一种，另一边自动推 -->
+      <view class="field">
+        <text class="field-label">使用期限</text>
+        <view class="switch">
+          <view class="switch-btn {{form.expiryMode === 'produce' ? 'active' : ''}}"
+                data-v="produce" bindtap="onExpiryMode">生产日期 + 保质期</view>
+          <view class="switch-btn {{form.expiryMode === 'expire' ? 'active' : ''}}"
+                data-v="expire" bindtap="onExpiryMode">直接填到期日</view>
+        </view>
+
+        <view class="switch-body">
+          <block wx:if="{{form.expiryMode === 'produce'}}">
+            <view class="field-row">
+              <view class="field half">
+                <text class="field-sub">生产日期</text>
+                <picker mode="date" value="{{form.produceDate}}" data-k="produceDate" bindchange="onDateChange">
+                  <view class="form-input picker {{form.produceDate ? '' : 'placeholder'}}">{{form.produceDate || '选择日期'}}</view>
+                </picker>
+              </view>
+              <view class="field half">
+                <text class="field-sub">保质期（月）</text>
+                <input class="form-input" type="number" placeholder="6" value="{{form.shelfMonths}}"
+                       data-k="shelfMonths" bindinput="onFormInput" />
+              </view>
+            </view>
+          </block>
+
+          <block wx:else>
+            <view class="field-row">
+              <view class="field half">
+                <text class="field-sub">到期日</text>
+                <picker mode="date" value="{{form.expireDate}}" data-k="expireDate" bindchange="onDateChange">
+                  <view class="form-input picker {{form.expireDate ? '' : 'placeholder'}}">{{form.expireDate || '选择日期'}}</view>
+                </picker>
+              </view>
+              <view class="field half">
+                <text class="field-sub">生产日期（可空）</text>
+                <picker mode="date" value="{{form.produceDate}}" data-k="produceDate" bindchange="onDateChange">
+                  <view class="form-input picker {{form.produceDate ? '' : 'placeholder'}}">{{form.produceDate || '选择日期'}}</view>
+                </picker>
+              </view>
+            </view>
+          </block>
+        </view>
+
+        <view class="form-hint">{{formHint}}</view>
+      </view>
+
+      <view class="field-row">
+        <view class="field half">
+          <text class="field-label">总数<i>*</i></text>
+          <input class="form-input" type="number" placeholder="1" value="{{form.qty}}"
+                 data-k="qty" bindinput="onFormInput" />
+        </view>
+        <view class="field half">
+          <text class="field-label">剩余</text>
+          <input class="form-input" type="number" placeholder="同总数" value="{{form.remain}}"
+                 data-k="remain" bindinput="onFormInput" />
+        </view>
+      </view>
+
+      <view class="field">
+        <text class="field-label">照片</text>
+        <view class="photo-row">
+          <image wx:if="{{form.photo}}" class="photo-pick has" src="{{form.photo}}" mode="aspectFill"
+                 bindtap="choosePhoto" />
+          <view wx:else class="photo-pick" bindtap="choosePhoto">
+            {{uploading ? '上传中…' : '+'}}
+          </view>
+          <view wx:if="{{form.photo}}" class="photo-del" bindtap="removePhoto">移除</view>
+        </view>
+      </view>
+
+      <view class="field">
+        <text class="field-label">备注</text>
+        <input class="form-input" placeholder="如：只用于眼周" value="{{form.note}}"
+               data-k="note" bindinput="onFormInput" maxlength="100" />
+      </view>
+
+      <view class="form-btns">
+        <button wx:if="{{editingId}}" class="btn-secondary" bindtap="cancelEdit">取消</button>
+        <button class="btn-primary" bindtap="saveCosmetic" loading="{{saving}}" disabled="{{saving}}">
+          {{editingId ? '保存修改' : '添加'}}
+        </button>
+      </view>
+    </view>
+
+    <view class="tips">
+      <view class="tips-title">💡 操作说明</view>
+      <view class="tips-item">· 填「生产日期 + 保质期」自动算到期日；填「到期日」加生产日期则反推保质期</view>
+      <view class="tips-item">· 已过期和临期的会排在最前面，用完的自动沉到最底部并变灰</view>
+      <view class="tips-item">· 适用妆造来自「妆容管理」的妆造库，不打标也可以，筛不出来而已</view>
+      <view class="tips-item">· 筛选、搜索、分组都在本机算，随便点，不消耗云函数次数</view>
+    </view>
+  </block>
+</view>

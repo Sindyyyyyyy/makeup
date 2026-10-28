@@ -1,0 +1,9 @@
+{
+  "name": "adminCosmetics",
+  "version": "1.0.0",
+  "description": "化妆师化妆品库（名称、品牌、种类、色号、适用妆造、效期、数量、照片）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -1,6 +1,7 @@
 // pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 双端切换入口）
 const { emptyForm, toForm, missingFields, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, setMode } = require('../../utils/role.js');
+const cosmeticsCache = require('../../utils/cosmeticsCache.js');
 
 const CACHE_KEY = 'user_profile';
 const INFO_CACHE_KEY = 'user_info';
@@ -31,6 +32,9 @@ Page({
     // 是不是「后台视图」状态。注意不要求有令牌：没输密码时首页也停在登录框上，
     // 这时个人中心必须给一个能逃出去的「顾客端入口」。
     isAdmin: false,
+    // 化妆品管理的到期角标（仅化妆师可见）。见 refreshCosmeticBadge
+    cosmeticState: '去管理',
+    cosmeticStateColor: '',
   },
 
   onLoad() {
@@ -56,6 +60,26 @@ Page({
   onShow() {
     // 可能在首页切了端或登录/退出，回来时入口文案要跟着变
     this.setData({ isAdmin: currentMode() === 'admin' });
+    this.refreshCosmeticBadge();
+  },
+
+  // 化妆品管理的到期角标。**只读 storage 缓存，绝不为这个数字发云函数调用**——
+  // 它只是个「有没有东西过期」的提示，不值得花一次调用。缓存空（还没进过
+  // 化妆品页）时显示「去管理」。从化妆品页返回会重跑 onShow，那时缓存刚被
+  // 那边写新，数字自然是最新的，整个闭环零额外调用。
+  refreshCosmeticBadge() {
+    if (currentMode() !== 'admin') return;
+    const list = cosmeticsCache.readCache() || [];
+    const s = cosmeticsCache.summarize(list);
+    this.setData({
+      cosmeticState: cosmeticsCache.summaryText(s),
+      // 有已过期就红，只剩临期就橙，都没有就沿用粉色默认
+      cosmeticStateColor: s.expired > 0 ? '#C62828' : (s.soon > 0 ? '#E86A17' : ''),
+    });
+  },
+
+  openCosmetics() {
+    wx.navigateTo({ url: '/pages/adminCosmetics/adminCosmetics' });
   },
 
   // ============ 资料 ============
