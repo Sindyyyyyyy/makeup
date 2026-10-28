@@ -218,7 +218,9 @@ Component({
         if (res.result && res.result.success) {
           const mapped = res.result.bookings.map(b => ({
             ...b,
-            slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
+            // 预约自带的时间段快照才是权威值（化妆师改过时间它会跟着更新），
+            // SLOT_NAME_MAP 只是它缺失时的兜底。
+            slotLabel: b.slotName || SLOT_NAME_MAP[b.slot] || b.slot,
             createdAtText: formatDateTime(b.createTime),
           }));
           const bookings = append ? this.data.bookings.concat(mapped) : mapped;

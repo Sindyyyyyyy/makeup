@@ -1,8 +1,11 @@
 // components/scheduleGrid/scheduleGrid.js - 课程表（唯一副本）
-// 时段管理页 pages/adminSlots 与化妆师后台首页 components/adminPanel 共用这一份，
+// 化妆师后台首页 components/adminPanel 与「时间管理」页之前的时段管理页共用这一份，
 // 两边的开关时段 / 设妆造 / 看顾客详情行为因此天然一致。
 // 方法必须放在 methods 下：Component 会静默丢弃顶层方法。
-const { SLOT_DEFS, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
+const {
+  SLOT_DEFS, computeWeekDates, isSlotExpired,
+  buildSlotRows, normalizeSlotTimes, resolveSlotTime, isCustomTime, formatRange, normHM,
+} = require('../../utils/slots.js');
 const { isLoggedIn } = require('../../utils/role.js');
 const styleCache = require('../../utils/styleCache.js');
 
@@ -22,11 +25,16 @@ const TOKEN_KEY = 'admin_token';
 // 时段过了之后服务端还有定时结算（cloudfunctions/sweepOverdue）：
 // pending → rejected（booked 置回 false）、confirmed → completed（done 置 true），
 // 所以规则 1 落到的几乎总是这两种已结算状态，不必靠格子自己去猜。
-function toCell(slotState, pastDate, expiredSlot) {
+//
+// tm 是这一格的**有效时间段**（单日覆盖优先，来自时段时间配置）：
+//   { range:'09:30-11:30', start:'09:30', end:'11:30', custom:false }
+// custom 为真表示这一天的这个时段被单独改过时间，界面上标一个小钟。
+function toCell(slotState, pastDate, expiredSlot, tm) {
   const s = (slotState && typeof slotState === 'object') ? slotState : null;
   const open = !!(s && s.open);
   const booked = !!(s && s.booked);
   const done = !!(s && s.done);
+  const t = tm || { range: '', start: '', end: '', custom: false };
   return {
     open,
     booked,
@@ -36,12 +44,16 @@ function toCell(slotState, pastDate, expiredSlot) {
     // 只表示「就是今天且这个时段的结束时刻已过」，整个日期过去的格子不算，
     // 用来区分点击时给哪句提示
     expired: !!expiredSlot && !pastDate,
+    time: t.range,
+    tStart: t.start,
+    tEnd: t.end,
+    custom: !!t.custom,
   };
 }
 
 Component({
   properties: {
-    // 是否显示底部「操作说明」（后台首页为 false，时段管理页为 true）
+    // 是否显示底部「操作说明」（后台首页为 false，时间管理页为 true）
     showTips: { type: Boolean, value: false },
     // 为 false 时不拉数据。挂载在已登录分支里就够用，保留以备宿主要做懒加载
     active: { type: Boolean, value: true },
@@ -51,7 +63,7 @@ Component({
     weekOffset: 0,
     weekDates: [],
     weekRange: '',
-    slots: SLOT_DEFS.map((s, i) => ({ ...s, _idx: i })),
+    slots: buildSlotRows(null),
     grid: [[], [], []],
     loading: false,
     // 妆造编辑弹窗
@@ -65,6 +77,12 @@ Component({
     modalStyles: [],
     quickStyles: [],
     saving: false,
+    // 弹窗里「改这一天的时间」的那一小块
+    showTimeEdit: false,
+    modalTimeRange: '',
+    timeStart: '',
+    timeEnd: '',
+    timeCustom: false,
     // 只读顾客信息弹窗
     showUserProfile: false,
     userInfo: null,
@@ -75,6 +93,9 @@ Component({
   lifetimes: {
     attached() {
       this.applyWeek(0);
+      // 时段时间配置：全局三段 + 单日覆盖。服务端随 adminListSlots 一起带回来，
+      // 不为了取时间再多打一次云函数调用。
+      this._times = normalizeSlotTimes(null);
       if (this.data.active && isLoggedIn()) {
         this.loadSlots();
         // 妆造库不进弹窗就没用，但快捷按钮是弹窗里最常点的东西，先拉好省得她等
@@ -114,11 +135,23 @@ Component({
     },
 
     // 令牌失效：**不动登录状态**，只提示并把决定权交给宿主。
-    // 后台首页的 handleAuthFail() 会先静默重签、失败才清身份；时段管理页则直接
+    // 后台首页的 handleAuthFail() 会先静默重签、失败才清身份；别的页面则直接
     // 切到未登录提示。组件自己 wx.removeStorageSync 会把重签这条路掐断。
     handleAuthFail() {
       wx.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
       this.triggerEvent('authfail');
+    },
+
+    // 某一格的有效时间段（单日覆盖优先）+ 是否被单独改过
+    cellTime(date, slot) {
+      const times = this._times || normalizeSlotTimes(null);
+      const eff = resolveSlotTime(times, date, slot);
+      return {
+        range: formatRange(eff),
+        start: eff.start,
+        end: eff.end,
+        custom: isCustomTime(times, date, slot),
+      };
     },
 
     async loadSlots() {
@@ -137,6 +170,8 @@ Component({
         if (res.result && res.result.success) {
           const tsMap = {};
           res.result.slots.forEach(s => { tsMap[s.date] = s; });
+          // 时段时间配置（全局三段 + 单日覆盖）跟着这次调用一起回来
+          this._times = normalizeSlotTimes(res.result.slotTimes);
           this.buildGrid(tsMap);
         } else if (res.result && res.result.code === 'UNAUTHORIZED') {
           this.handleAuthFail();
@@ -158,14 +193,17 @@ Component({
         const slotKey = SLOT_DEFS[s].key;
         for (let d = 0; d < dates.length; d++) {
           const ts = tsMap[dates[d].date];
+          const tm = this.cellTime(dates[d].date, slotKey);
           grid[s][d] = toCell(
             ts ? ts[slotKey] : null,
             dates[d].isPast,
-            isSlotExpired(dates[d].date, slotKey),
+            isSlotExpired(dates[d].date, tm.end),
+            tm,
           );
         }
       }
-      this.setData({ grid });
+      // 行标题上的时间用全局配置
+      this.setData({ grid, slots: buildSlotRows(this._times) });
     },
 
     // 就地更新一个格子。adminSetTimeSlot 会在响应里回传它刚写进去的那个时段，
@@ -178,9 +216,31 @@ Component({
       if (sIdx < 0 || dIdx < 0) return;
       const info = this.data.weekDates[dIdx];
       const isPast = !!info.isPast;
-      const expired = isSlotExpired(info.date, slot);
+      const tm = this.cellTime(date, slot);
+      const expired = isSlotExpired(info.date, tm.end);
       const grid = this.data.grid.map((row, i) => (
-        i === sIdx ? row.map((c, j) => (j === dIdx ? toCell(slotState, isPast, expired) : c)) : row
+        i === sIdx ? row.map((c, j) => (j === dIdx ? toCell(slotState, isPast, expired, tm) : c)) : row
+      ));
+      this.setData({ grid });
+    },
+
+    // 只改这一格的时间，其他状态（开放/预约/妆造）原样保留。
+    // 改完时间后 past / expired 可能变化（结束时刻变了），所以整格重算。
+    patchCellTime(date, slot, tm) {
+      const sIdx = SLOT_DEFS.findIndex(s => s.key === slot);
+      const dIdx = this.data.weekDates.findIndex(d => d.date === date);
+      if (sIdx < 0 || dIdx < 0) return;
+      const info = this.data.weekDates[dIdx];
+      const cur = this.data.grid[sIdx][dIdx] || {};
+      const expired = isSlotExpired(info.date, tm.end);
+      const cell = toCell(
+        { open: cur.open, booked: cur.booked, done: cur.done, styles: cur.styles },
+        !!info.isPast,
+        expired,
+        tm,
+      );
+      const grid = this.data.grid.map((row, i) => (
+        i === sIdx ? row.map((c, j) => (j === dIdx ? cell : c)) : row
       ));
       this.setData({ grid });
     },
@@ -212,11 +272,18 @@ Component({
         showStyleModal: true,
         modalDate: date,
         modalSlot: slot,
-        modalSlotName: `${date} ${slotDef ? slotDef.name + ' ' + slotDef.time : slot}`,
+        // 弹窗标题带上这一格的**有效时间段**，改过的那天一眼能看出来
+        modalSlotName: `${date} ${slotDef ? slotDef.name : slot} ${cell ? cell.time : ''}`.trim(),
         modalIsOpen: open,
         modalBooked: !!(cell && cell.booked),
         modalDone: !!(cell && cell.done),
         modalStyles: (cell && cell.styles ? cell.styles : []).map(s => ({ name: s.name, price: String(s.price) })),
+        // 时间编辑区默认收起，不干扰她开妆造
+        showTimeEdit: false,
+        modalTimeRange: (cell && cell.time) || '',
+        timeStart: (cell && cell.tStart) || '',
+        timeEnd: (cell && cell.tEnd) || '',
+        timeCustom: !!(cell && cell.custom),
       });
       // 这里刻意不调任何云函数：打开弹窗只是一次本地渲染，
       // 顾客资料等她真的点「详细信息」再查（云函数调用次数是稀缺的）
@@ -265,7 +332,7 @@ Component({
     },
 
     closeStyleModal() {
-      this.setData({ showStyleModal: false, showUserProfile: false });
+      this.setData({ showStyleModal: false, showUserProfile: false, showTimeEdit: false });
     },
 
     noop() {},
@@ -442,6 +509,133 @@ Component({
           this.handleAuthFail();
         } else {
           wx.showToast({ title: (res.result && res.result.message) || '操作失败', icon: 'none' });
+        }
+      } catch (e) {
+        console.error(e);
+        wx.showToast({ title: '操作失败', icon: 'none' });
+      } finally {
+        this.setData({ saving: false });
+      }
+    },
+
+    // ============ 改这一天的时段时间 ============
+    // 「改这天」：就地展开两个时间选择器（不做第二层弹窗，避免 z-index 打架）。
+    // 改的是**这一天**的时间，不影响别的日期；全局默认在「时间管理」页改。
+    toggleTimeEdit() {
+      if (this.data.showTimeEdit) {
+        this.setData({ showTimeEdit: false });
+        return;
+      }
+      const { modalDate, modalSlot } = this.data;
+      const cell = this.findCell(modalDate, modalSlot);
+      this.setData({
+        showTimeEdit: true,
+        timeStart: (cell && cell.tStart) || '',
+        timeEnd: (cell && cell.tEnd) || '',
+      });
+    },
+
+    onTimeStartChange(e) {
+      this.setData({ timeStart: normHM(e.detail.value) });
+    },
+
+    onTimeEndChange(e) {
+      this.setData({ timeEnd: normHM(e.detail.value) });
+    },
+
+    // 保存这一天的时段时间
+    async saveCellTime() {
+      const { modalDate, modalSlot, timeStart, timeEnd, saving } = this.data;
+      if (saving) return;
+      if (!timeStart || !timeEnd) {
+        return wx.showToast({ title: '请选择完整的起止时间', icon: 'none' });
+      }
+      this.setData({ saving: true });
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'adminSlotTimes',
+          data: {
+            action: 'setDate',
+            date: modalDate,
+            slot: modalSlot,
+            time: { start: timeStart, end: timeEnd },
+            token: wx.getStorageSync(TOKEN_KEY),
+          },
+        });
+        const r = res.result;
+        if (r && r.success) {
+          // 服务端回传整份配置，客户端更新本地副本后只重算这一格
+          this._times = normalizeSlotTimes(r.slotTimes);
+          const tm = this.cellTime(modalDate, modalSlot);
+          this.patchCellTime(modalDate, modalSlot, tm);
+          this.setData({
+            modalTimeRange: tm.range,
+            timeStart: tm.start,
+            timeEnd: tm.end,
+            timeCustom: tm.custom,
+            showTimeEdit: false,
+            // 行标题上的时间是全局值，这里不变；但整行标题要跟着新配置重建
+            slots: buildSlotRows(this._times),
+          });
+          // toast 只有一行，超过十几个字会被截断，同步条数带上就够
+          wx.showToast({
+            title: r.synced ? `已保存，${r.synced}个预约已同步` : '已保存这一天的时间',
+            icon: 'none',
+          });
+        } else if (r && r.code === 'UNAUTHORIZED') {
+          this.handleAuthFail();
+        } else {
+          wx.showModal({
+            title: '保存失败',
+            content: (r && r.message) || '操作失败',
+            showCancel: false,
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        wx.showToast({ title: '操作失败', icon: 'none' });
+      } finally {
+        this.setData({ saving: false });
+      }
+    },
+
+    // 恢复默认：删掉这一天的单日覆盖，回到全局时间
+    async clearCellTime() {
+      const { modalDate, modalSlot, saving } = this.data;
+      if (saving) return;
+      this.setData({ saving: true });
+      try {
+        const res = await wx.cloud.callFunction({
+          name: 'adminSlotTimes',
+          data: {
+            action: 'clearDate',
+            date: modalDate,
+            slot: modalSlot,
+            token: wx.getStorageSync(TOKEN_KEY),
+          },
+        });
+        const r = res.result;
+        if (r && r.success) {
+          this._times = normalizeSlotTimes(r.slotTimes);
+          const tm = this.cellTime(modalDate, modalSlot);
+          this.patchCellTime(modalDate, modalSlot, tm);
+          this.setData({
+            modalTimeRange: tm.range,
+            timeStart: tm.start,
+            timeEnd: tm.end,
+            timeCustom: tm.custom,
+            showTimeEdit: false,
+            slots: buildSlotRows(this._times),
+          });
+          wx.showToast({ title: '已恢复默认时间', icon: 'none' });
+        } else if (r && r.code === 'UNAUTHORIZED') {
+          this.handleAuthFail();
+        } else {
+          wx.showModal({
+            title: '操作失败',
+            content: (r && r.message) || '操作失败',
+            showCancel: false,
+          });
         }
       } catch (e) {
         console.error(e);

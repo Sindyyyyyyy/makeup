@@ -5,7 +5,57 @@ const db = cloud.database();
 
 // 每天3个时段
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
-const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
+
+// ============ 时段配置 ============
+// 时段的时间是数据不是代码：权威值在 timeSlots 集合的 _id='slot_times' 文档里。
+//   { morning:{start,end}, afternoon:{...}, evening:{...},
+//     overrides: { 'YYYY-MM-DD': { morning:{start,end} } } }
+// 有效时间 = overrides[date][slot] ?? 全局的 slot（单日覆盖优先）。
+// 与 miniprogram/utils/slots.js 是同一套规则（两个目录不共享文件系统，只能各抄一份）。
+const CONFIG_DOC_ID = 'slot_times';
+const DEFAULT_TIMES = {
+  morning: { start: '09:30', end: '11:30' },
+  afternoon: { start: '14:00', end: '17:00' },
+  evening: { start: '18:00', end: '21:00' },
+};
+
+// 读配置文档。文档还不存在（第一次用）时退回默认值。
+async function readSlotTimes() {
+  try {
+    const res = await db.collection('timeSlots').doc(CONFIG_DOC_ID).get();
+    const d = res && res.data;
+    if (!d) return { ...DEFAULT_TIMES, overrides: {} };
+    const out = { overrides: (d.overrides && typeof d.overrides === 'object') ? d.overrides : {} };
+    SLOT_KEYS.forEach(k => {
+      const t = d[k];
+      out[k] = (t && t.start && t.end) ? { start: t.start, end: t.end } : { ...DEFAULT_TIMES[k] };
+    });
+    return out;
+  } catch (e) {
+    return { ...DEFAULT_TIMES, overrides: {} };
+  }
+}
+
+// 某一天某个时段的有效时间：单日覆盖优先，没有就用全局的
+function effectiveTime(times, date, slot) {
+  const ov = times.overrides[date] && times.overrides[date][slot];
+  return (ov && ov.start && ov.end) ? ov : times[slot];
+}
+
+// 时间段字符串：'HH:MM-HH:MM'（**一个**连字符，订阅消息靠 split('-')[0] 取开始时间）
+function rangeOf(t) {
+  return `${t.start}-${t.end}`;
+}
+
+// 'HH:MM' → 从 00:00 起的分钟数
+function toMinutes(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+}
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
@@ -97,11 +147,11 @@ function clip(s, n) {
 }
 
 // 模板1的 time2 字段是「预约时间」，type 是 time，要带时分。
-// 时段文档里存的是**区间**（'09:30-11:30'），整段塞进去会被平台判为非法，
-// 所以只取开始时间。开始时间直接从 SLOT_NAMES 切出来，不另抄一份常量，
-// 改时段定义时自动跟着变。缺时段就退化成纯日期，仍然能发出去。
-function fmtTime(date, slot) {
-  const start = (SLOT_NAMES[slot] || '').split('-')[0] || '';
+// 预约文档里存的是**区间**（'09:30-11:30'），整段塞进去会被平台判为非法，
+// 所以只取开始时间。开始时间从下单那一刻的有效时间段里切出来（配置里的时间，
+// 不是写死的常量），缺时段就退化成纯日期，仍然能发出去。
+function fmtTime(date, slotName) {
+  const start = String(slotName || '').split('-')[0] || '';
   if (!start) return String(date || '');
   return `${date} ${start}:00`;
 }
@@ -196,10 +246,6 @@ async function readUserDoc(openid) {
   }
 }
 
-// 时段结束时刻（本地 24 小时制）：上午 11 点后 / 下午 17 点后 / 晚上 21 点后
-// 与前端 utils/slots.js 的 SLOT_END_HOUR 是同一套规则，改一处要改两处
-const SLOT_END_HOUR = { morning: 11, afternoon: 17, evening: 21 };
-
 // 云函数运行时区不保证是东八区，统一按 UTC+8 计算「今天」和当前小时
 function beijingNow() {
   const d = new Date(Date.now() + 8 * 3600 * 1000);
@@ -207,6 +253,7 @@ function beijingNow() {
   return {
     date: `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`,
     hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
   };
 }
 
@@ -271,10 +318,15 @@ exports.main = async (event, context) => {
 
   // 禁止预约当天已过结束时刻的时段（如上午 10 点不能再约 09:30-11:30）。
   // 前端也会置灰，但客户端能绕过，必须服务端兜底。
+  // 结束时刻来自配置（这一天的有效时间段），不再是写死的整数小时。
+  const slotTimes = await readSlotTimes();
+  const effTime = effectiveTime(slotTimes, date, slot);
+  const slotRange = rangeOf(effTime);
   const now = beijingNow();
-  const endHour = SLOT_END_HOUR[slot];
-  if (endHour !== undefined && date === now.date && now.hour >= endHour) {
-    return { success: false, message: msg.slotExpired(SLOT_NAMES[slot]) };
+  const endMinutes = toMinutes(effTime.end);
+  if (endMinutes !== null && date === now.date
+      && now.hour * 60 + now.minute >= endMinutes) {
+    return { success: false, message: msg.slotExpired(slotRange) };
   }
 
   const cleanName = String(name).trim();
@@ -323,7 +375,7 @@ exports.main = async (event, context) => {
     }
     const slotData = slotDoc[slot];
     if (!slotData || !slotData.open) {
-      return { success: false, message: msg.slotNotOpen(SLOT_NAMES[slot]) };
+      return { success: false, message: msg.slotNotOpen(slotRange) };
     }
 
     // 服务端校验所选妆造确实在该时段的开放列表中，价格以服务端配置为准
@@ -349,7 +401,7 @@ exports.main = async (event, context) => {
     }).update({ data: { [`${slot}.booked`]: true, [`${slot}.done`]: false } });
 
     if (claim.stats.updated !== 1) {
-      return { success: false, message: msg.justBooked(SLOT_NAMES[slot]) };
+      return { success: false, message: msg.justBooked(slotRange) };
     }
 
     let createRes;
@@ -359,7 +411,8 @@ exports.main = async (event, context) => {
           _openid: openid,
           date,
           slot,
-          slotName: SLOT_NAMES[slot],
+          // 下单那一刻的有效时间段（单日覆盖优先），通知里的预约时间从它切开始时间
+          slotName: slotRange,
           name: cleanName,
           skinType: cleanSkin,
           remark: cleanRemark,
@@ -392,7 +445,7 @@ exports.main = async (event, context) => {
       const data = {
         // key 与公众平台模板详情页一一对应，改模板要改这里
         thing20: { value: clip(cleanName, 20) },  // 预约人
-        time2: { value: clip(fmtTime(date, slot), 32) },  // 预约时间
+        time2: { value: clip(fmtTime(date, slotRange), 32) },  // 预约时间
         thing7: { value: clip(finalStyleName || '化妆预约', 20) },  // 预约项目
         thing9: { value: clip('新预约待确认，请及时处理', 20) },  // 温馨提示
       };

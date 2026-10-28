@@ -2,15 +2,52 @@
   <!-- 顶部标题 -->
   <view class="page-header">
     <view class="back-btn" bindtap="goBack">‹ 返回</view>
-    <text class="page-title">时段管理</text>
+    <text class="page-title">时间管理</text>
     <view style="width:80rpx"></view>
   </view>
 
   <!-- 未登录提示 -->
   <view wx:if="{{!isAdmin}}" class="login-tip">
-    <text>请先在「化妆师后台」登录后再管理时段</text>
+    <text>请先在「化妆师后台」登录后再设置时间</text>
   </view>
 
-  <!-- 课程表（与化妆师后台首页共用同一份组件） -->
-  <schedule-grid wx:if="{{isAdmin}}" id="scheduleGrid" show-tips="{{true}}" bind:authfail="handleAuthFail" />
+  <block wx:else>
+    <view class="intro">
+      这里设置每天三个时段的起止时间，保存后对所有日期生效。
+      某一天特殊的话，可以在后台首页的课程表里点那个格子→「改这天」单独调整。
+    </view>
+
+    <view wx:if="{{loading}}" class="loading-tip">加载中…</view>
+
+    <view class="time-list">
+      <view wx:for="{{rows}}" wx:key="key" class="time-row">
+        <view class="time-name">{{item.name}}</view>
+        <view class="time-fields">
+          <text class="time-tag">开始</text>
+          <picker mode="time" value="{{item.start}}" data-slot="{{item.key}}" bindchange="onStartChange">
+            <view class="time-picker">{{item.start}}</view>
+          </picker>
+          <text class="time-dash">—</text>
+          <text class="time-tag">结束</text>
+          <picker mode="time" value="{{item.end}}" data-slot="{{item.key}}" bindchange="onEndChange">
+            <view class="time-picker">{{item.end}}</view>
+          </picker>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{overrideCount > 0}}" class="override-tip">
+      有 {{overrideCount}} 天单独调整过时间（在后台首页的课程表里点格子→「改这天」）。
+      这里的默认值不会覆盖那些单日调整。
+    </view>
+
+    <view class="btn-row">
+      <view class="btn-restore" bindtap="restoreDefault">恢复默认</view>
+      <view class="btn-save" bindtap="save">保存</view>
+    </view>
+
+    <view class="foot-tip">
+      改完时间后，还没完成的预约（待确认/已确认）会同步到新的时间，已完成的历史保持原样。
+    </view>
+  </block>
 </view>

@@ -1,0 +1,9 @@
+{
+  "name": "adminSlotTimes",
+  "version": "1.0.0",
+  "description": "化妆师设置时段起止时间（全局默认 + 单日覆盖）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

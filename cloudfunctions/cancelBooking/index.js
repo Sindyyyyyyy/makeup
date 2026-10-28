@@ -26,9 +26,6 @@ const TPL_ARTIST_CANCELLED = 'fBtVJqD7Ur_ERJ7y78L46MRXtX7n4R_SS4448hvqPIE';  // 
 //              「开发版小程序已过期」，所以不要用它给顾客测。
 const MINI_STATE = 'trial';
 
-// 与 createBooking 的 SLOT_NAMES 是同一份定义（改一处两处都要改）
-const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
-
 const PAGE_HOME = 'pages/index/index'; // 无前导斜杠，须与 app.json 注册项逐字一致
 
 // ============ 界面语言 ============
@@ -75,11 +72,13 @@ function fmtName(raw) {
 }
 
 // 模板3 的 time4 字段是「原预约时间」，type 是 time，要带时分。
-// 时段文档里存的是**区间**（'09:30-11:30'），整段塞进去会被平台判为非法，
-// 所以只取开始时间。开始时间直接从 SLOT_NAMES 切出来，不另抄常量；
+// 预约文档里存的是**区间**（'09:30-11:30'），整段塞进去会被平台判为非法，
+// 所以只取开始时间。开始时间直接从预约文档自己那份快照（slotName）里切出来，
+// 不要再抄一份硬编码的时间表 —— 化妆师改了时段起止时间之后，slotName 会被
+// adminSlotTimes 同步更新，这里自然就跟着准了。
 // 缺时段就退化成纯日期，仍然能发出去。
-function fmtTime(date, slot) {
-  const start = (SLOT_NAMES[slot] || '').split('-')[0] || '';
+function fmtTime(date, slotName) {
+  const start = String(slotName || '').split('-')[0] || '';
   if (!start) return String(date || '');
   return `${date} ${start}:00`;
 }
@@ -216,7 +215,7 @@ exports.main = async (event, context) => {
       const data = {
         // key 与公众平台模板详情页一一对应，改模板要改这里
         name1: { value: fmtName(booking.name) },  // 姓名（必须是合法人名，见 fmtName）
-        time4: { value: clip(fmtTime(booking.date, booking.slot), 32) },  // 原预约时间
+        time4: { value: clip(fmtTime(booking.date, booking.slotName), 32) },  // 原预约时间
         thing2: { value: clip(booking.styleName || '化妆预约', 20) },  // 原预约项目
         thing13: { value: clip('顾客主动取消，请重新开放时段', 20) },  // 温馨提醒
       };

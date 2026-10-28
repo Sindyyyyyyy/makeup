@@ -61,19 +61,20 @@ There is no custom component other than `components/infoForm`, `components/admin
 
 ### 课程表组件 (components/scheduleGrid)
 
-时段的周导航 + 3×7 网格 + 点格子弹出的妆造编辑弹窗 + 弹窗里的只读顾客信息弹窗，全部收在这一个组件里，**`pages/adminSlots` 和 `components/adminPanel` 引用的是同一份**。后台首页把它放在「开启提醒」行和统计卡之间，开关时段/设妆造不必再跳页；首页的「时段管理」入口按钮保留（妆容管理仍需跳转）。`adminSlots` 因此瘦成只剩标题栏/未登录提示/返回的壳，课程表样式也从 `adminSlots.wxss` 挪进了组件。
+时段的周导航 + 3×7 网格 + 点格子弹出的妆造编辑弹窗 + 弹窗里的只读顾客信息弹窗，全部收在这一个组件里，**`components/adminPanel`（化妆师后台首页）是它唯一的宿主**。后台首页把它放在「开启提醒」行和统计卡之间，开关时段/设妆造/看顾客详情/改某一天的时间都不必再跳页。`pages/adminSlots` 已经被改造成**「时间管理」页**（只调时段起止时间，不含课程表），所以「操作说明」（`show-tips`）挂到了后台首页这份课程表上。
 
 约定（与 `infoForm` 同一套）：
 
 - 组件方法**必须**挂在 `methods` 下，`attached()` 里做首拉（`adminListSlots` + `adminStyles`）。自定义组件样式默认 `styleIsolation: isolated`，所以宿主 adminPanel 的 `.btn-primary` / `.container` 与组件内的同名类互不干扰，两个 `.wxss` 里出现同名类是安全的。
-- 宿主用 `selectComponent('#scheduleGrid').reload()` 驱动重拉；`reload` 返回 Promise，**只重拉时段表**（妆造库由 `styleCache` 在 `attached()` 时拉一次，见「调用次数」一节）。**取不到组件要容错**——首帧 `isAdmin` 还是 false 时子组件尚未渲染；`adminSlots.onShow` 的首次调用正是这种情况，真正的首拉由 `attached()` 负责，不会重复发请求。
+- 宿主用 `selectComponent('#scheduleGrid').reload()` 驱动重拉；`reload` 返回 Promise，**只重拉时段表**（妆造库由 `styleCache` 在 `attached()` 时拉一次，见「调用次数」一节）。**取不到组件要容错**——首帧 `isAdmin` 还是 false 时子组件尚未渲染。
 - 开关时段 / 保存妆造后**不要 `loadSlots()`**：云函数回传 `slotState`，用 `patchCell()` 就地改那一个格子。见「调用次数」一节。
 - 令牌失效时组件**只 toast 并 `triggerEvent('authfail')`，绝不清本地登录状态**：后台首页的 `handleAuthFail()` 要先静默重签，组件自己 `removeStorageSync` 会把那扇门掐断。页面的 `handleAuthFail` 才调 `clearAdmin()`。
-- `info-form` 由组件自己的 `.json` 注册（弹窗需要），`adminSlots.json` 里不再有它。
+- `info-form` 由组件自己的 `.json` 注册（弹窗需要）。
+- 格子右上角的 `⏱` 角标表示「这一天的这个时段被单独改过时间」，具体时间看弹窗标题。
 
 ### Cloud database collections
 
-- `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed).
+- `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed). **另有一篇 `_id='slot_times'` 的配置文档**（时段起止时间，见「时段时间是数据」一节）——它没有 `date` 字段，所以按日期查时段表的所有查询都不会命中它；`adminListSlots` 不带日期区间时会把没有 `date` 的文档滤掉。
 - `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `status`, `createTime`, `updateTime`.
 - `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`, and the server-owned `admin` / `adminUpdateTime` (see 免密登录 below). `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **`admin` must never enter any whitelist patch or the `get` response — it is written only by `adminLogin`/`adminLogout`.** **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself. Without it, passwordless re-mint always fails and the artist re-enters the password every time.
 
@@ -128,9 +129,44 @@ Client-only enforcement would be worthless here, so `createBooking` re-checks se
 
 > **已知限制：订阅消息仍然是中文。** 模板字段 `thing` 上限 20 字，`phrase` 是「限定五个中文汉字以内」——「Booking confirmed, please arrive on time」有 42 字，装不下；`phrase5` 更是纯中文字段。要支持英文必须在公众平台改模板字段类型，超出本次范围。
 
+### 时段时间是数据（全局默认 + 单日覆盖）
+
+一天三个时段（`morning` / `afternoon` / `evening`）的**起止时间是数据，不是代码**。权威值存在 `timeSlots` 集合的固定 `_id='slot_times'` 文档里：
+
+```
+{
+  morning:   { start:'09:30', end:'11:30' },
+  afternoon: { start:'14:00', end:'17:00' },
+  evening:   { start:'18:00', end:'21:00' },
+  overrides: { '2026-10-28': { morning: { start:'10:00', end:'12:00' } } },
+  updateTime: <serverDate>
+}
+```
+
+- **有效时间 = `overrides[date][slot] ?? 全局的 slot`**（单日覆盖优先）。这条规则在 `miniprogram/utils/slots.js` 和各云函数里**各抄一份**，改一处要改几处——两个目录不共享文件系统，只能人工同步。
+- 时间段字符串统一是 `'HH:MM-HH:MM'`（**一个**连字符）：订阅消息的 `fmtTime` / `fmtDateTime` 用 `split('-')[0]` 取开始时间，多一个连字符就会取错。
+- 兜底默认值 `09:30-11:30 / 14:00-17:00 / 18:00-21:00` 只在「配置文档还不存在」时用得到，不是权威值。
+- `overrides` 只保留今天及以后的日期（写的时候顺手剪掉过期的），文档不会无限膨胀。
+- `bookings.slotName` 存**下单那一刻的有效时间段**（快照）。
+
+**云函数 `adminSlotTimes`**（新目录，`verifyAdmin()` 按约定抄一份）管所有时间动作：
+
+| `event.action` | 入参 | 行为 |
+|---|---|---|
+| `'get'` | — | `{ slotTimes, defaults }` |
+| `'set'` | `times:{morning:{start,end},…}` | 改全局三段 → 写配置文档 → 同步预约 → 回传新 `slotTimes` |
+| `'setDate'` | `date, slot, time:{start,end}` | 给某天某时段加**单日覆盖** → 同步该天该时段的预约 |
+| `'clearDate'` | `date, slot` | 删掉单日覆盖（回到全局值）→ 同步该天该时段的预约 |
+
+校验：`HH:MM` 合法、`start < end`、时长 ≥ 1 小时、**同一天三段之间不能重叠**（改全局时还要拿已有的单日覆盖一起算，冲突就拒绝保存）。同步预约只查 `status in (pending, confirmed)`（单字段查询，复合条件要索引），**按每条预约自己那天的有效时间段写** `slotName`——有单日覆盖的那天不能跟着全局值走。已完成/已取消/已拒绝的历史不动。
+
+**入口**：后台首页「时间管理」→ `pages/adminSlots`（六个 `<picker mode="time">`，保存走 `adminSlotTimes{action:'set'}`）；单日覆盖在后台首页的课程表里点格子 → 弹窗「改这天」→ `adminSlotTimes{action:'setDate'|'clearDate'}`。两处都是**就地打补丁**，不重拉整周。
+
+**读取路径不额外花云函数调用**：配置跟着 `listWeekSchedule`（顾客端）和 `adminListSlots`（后台）一起回来，`slotTimes` 字段。过期判定（`createBooking` / `sweepOverdue` / 前端 `isSlotExpired`）一律用**有效结束时间**，`SLOT_END_HOUR` 那套写死的整数小时已经删掉了——顺带修掉一个老 bug：旧规则上午 11:00 就过期，实际时段到 11:30，白白少卖半小时。
+
 ### Booking slot lifecycle
 
-Three fixed slots per day are defined **twice** and must be kept in sync manually: `miniprogram/utils/slots.js` (`SLOT_DEFS` — the frontend source of truth) and the `SLOT_KEYS`/`SLOT_NAMES` constants at the top of each cloud function. Slot names are `'8-11点'`, `'14-17点'`, `'18-21点'`.
+Three fixed slots per day (`morning` / `afternoon` / `evening`); their **time ranges are data** (see above), but the **keys** are still defined in two places and must be kept in sync manually: `miniprogram/utils/slots.js` (`SLOT_DEFS` — the frontend source of truth) and the `SLOT_KEYS` constant at the top of each cloud function. The old `'8-11点'` / `'14-17点'` / `'18-21点'` slot-name strings are gone — the display name is now the configured range string.
 
 Status state machine (enforced in `adminUpdateBooking` via `ACTION_MAP`):
 `pending → confirmed → completed`, plus `pending → rejected`. Customers cancel via `cancelBooking`.
@@ -141,7 +177,7 @@ Concurrency: `createBooking` claims a slot with a conditional single-document up
 
 ### 妆造 (makeup styles) pricing
 
-Per-slot 妆造 options and prices are configured by the admin (后台首页课程表 或 `adminSlots` 课程表，同一份组件) and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
+Per-slot 妆造 options and prices are configured by the admin (后台首页课程表) and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
 
 ### 调用次数：缓存与本地打补丁
 
@@ -161,6 +197,9 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 | 确认/拒绝/标记完成 | `adminUpdateBooking` → `status` | `adminPanel.patchBookingStatus()` |
 | 开关时段 / 保存妆造 | `adminSetTimeSlot` → `date`/`slot`/`slotState` | `scheduleGrid.patchCell()` |
 | 妆造增删改 | `adminStyles` → `style`（含 `_id`） | `adminStyles.applyLocalStyles()` |
+| 改时段起止时间 | `adminSlotTimes` → `slotTimes` | `scheduleGrid.patchCellTime()` / 时间管理页重建 `rows` |
+
+**时段起止时间的配置不额外花云函数调用**：它跟着 `listWeekSchedule`（顾客端）和 `adminListSlots`（后台）一起回来。只有打开「时间管理」页时多一次 `adminSlotTimes{action:'get'}`，以及真正改时间时的 `set` / `setDate`。云函数内部的配置文档读不占额度。
 
 云函数**不返回 `sort`**：`add` 用「当前条数」当 sort、`update` 压根不碰它，两种都得由客户端从本地列表推算（新增排末尾、修改保持原位）。所有客户端改动都写了兜底：响应里没有对应字段（部署的还是旧版云函数）就退回原来的全量拉取，行为和以前完全一样。
 
@@ -186,7 +225,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 **三个模板都没有单独的「时段」字段，时段是搭在预约时间里的** —— `date`/`time` 两种类型都接受 `2026-10-20 09:30:00` 这种带时分的格式（平台示例即如此），所以「预约时间」一个字段就同时表达了日期和具体时段，不必再加字段。
 
-注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），整段塞进时间字段会被判非法，所以三个云函数都只取**开始**时间，拼成 `YYYY-MM-DD HH:mm:00`。开始时间的来源各不一样：`adminUpdateBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，时段定义改了自动跟着变），`createBooking`/`cancelBooking` 从 `SLOT_NAMES` 切。缺时段时退化成纯日期，消息仍能发出去。
+注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），整段塞进时间字段会被判非法，所以三个云函数都只取**开始**时间，拼成 `YYYY-MM-DD HH:mm:00`。开始时间的来源：`adminUpdateBooking` 和 `cancelBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，化妆师改时段起止时间时 `slotName` 会被 `adminSlotTimes` 同步更新，这里自动跟着准）；`createBooking` 从下单那一刻的**有效时间段**切（配置里的值，单日覆盖优先）。缺时段时退化成纯日期，消息仍能发出去。
 
 **授权点**（`wx.requestSubscribeMessage` 必须由用户手势触发，放进 load/onShow/网络回调会报 `can only be invoked by user TAP action`）：
 

@@ -1,4 +1,4 @@
-/* pages/adminSlots/adminSlots.wxss - 时段管理页外壳（课程表样式在组件里） */
+/* pages/adminSlots/adminSlots.wxss - 时间管理页 */
 .container {
   padding: 24rpx;
   padding-bottom: 120rpx;
@@ -28,4 +28,102 @@
   color: #BBB;
   font-size: 26rpx;
   padding: 40rpx 0;
+}
+
+.intro {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.7;
+  margin-bottom: 24rpx;
+}
+
+.loading-tip {
+  text-align: center;
+  color: #BBB;
+  font-size: 24rpx;
+  padding: 12rpx 0;
+}
+
+.time-list {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 8rpx 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.time-row {
+  padding: 24rpx 0;
+  border-bottom: 2rpx dashed #F5E6EA;
+}
+.time-row:last-child {
+  border-bottom: none;
+}
+.time-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 16rpx;
+}
+.time-fields {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.time-tag {
+  font-size: 24rpx;
+  color: #999;
+}
+.time-dash {
+  color: #CCC;
+  font-size: 26rpx;
+}
+.time-picker {
+  min-width: 140rpx;
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #4A4A4A;
+  background: #FFF8FA;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 14rpx 20rpx;
+}
+
+.override-tip {
+  margin-top: 20rpx;
+  font-size: 22rpx;
+  color: #F57F17;
+  background: #FFF8E1;
+  border: 2rpx solid #FFE082;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  line-height: 1.6;
+}
+
+.btn-row {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 36rpx;
+}
+.btn-save,
+.btn-restore {
+  flex: 1;
+  text-align: center;
+  font-size: 30rpx;
+  border-radius: 44rpx;
+  padding: 22rpx 0;
+}
+.btn-save {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF;
+}
+.btn-restore {
+  background: #F5F5F5;
+  color: #999;
+}
+
+.foot-tip {
+  margin-top: 24rpx;
+  font-size: 22rpx;
+  color: #AAA;
+  line-height: 1.6;
 }

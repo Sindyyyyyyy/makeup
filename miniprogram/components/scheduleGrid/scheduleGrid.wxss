@@ -107,6 +107,15 @@
   font-weight: 500;
   min-height: 60rpx;
   padding: 8rpx 4rpx;
+  position: relative;
+}
+/* 这一天的时间被单独改过：右上角一个小钟，具体时间看弹窗 */
+.time-flag {
+  position: absolute;
+  top: 2rpx;
+  right: 4rpx;
+  font-size: 20rpx;
+  line-height: 1;
 }
 .slot-btn.open {
   background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
@@ -188,6 +197,88 @@
   padding: 16rpx;
   margin-bottom: 20rpx;
   text-align: center;
+}
+
+/* 弹窗里的「改这一天的时间」 */
+.time-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  padding: 16rpx 0;
+  border-bottom: 2rpx dashed #FFE0E8;
+  margin-bottom: 16rpx;
+}
+.time-row-label {
+  font-size: 26rpx;
+  color: #666;
+}
+.time-row-value {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+}
+.time-row-flag {
+  font-size: 20rpx;
+  color: #F57F17;
+  background: #FFF8E1;
+  border-radius: 8rpx;
+  padding: 2rpx 8rpx;
+}
+.time-row-btn {
+  margin-left: auto;
+  font-size: 24rpx;
+  color: #C95B7C;
+  border: 2rpx solid #FFB6C8;
+  border-radius: 24rpx;
+  padding: 6rpx 20rpx;
+}
+.time-edit {
+  background: #FFF8FA;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+}
+.time-edit-pickers {
+  display: flex;
+  gap: 16rpx;
+}
+.time-picker {
+  flex: 1;
+  text-align: center;
+  font-size: 26rpx;
+  color: #4A4A4A;
+  background: #FFFFFF;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 12rpx;
+  padding: 16rpx 8rpx;
+}
+.time-edit-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+.time-save,
+.time-clear {
+  flex: 1;
+  text-align: center;
+  font-size: 26rpx;
+  border-radius: 28rpx;
+  padding: 14rpx 0;
+}
+.time-save {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF;
+}
+.time-clear {
+  background: #F5F5F5;
+  color: #999;
+}
+.time-edit-hint {
+  font-size: 20rpx;
+  color: #AAA;
+  margin-top: 12rpx;
+  line-height: 1.5;
 }
 .quick-wrap {
   margin-bottom: 24rpx;

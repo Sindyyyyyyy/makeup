@@ -5,7 +5,44 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
-const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: '18:00-21:00' };
+
+// ============ 时段配置 ============
+// 权威值在 timeSlots 集合的 _id='slot_times' 文档里：
+//   { morning:{start,end}, afternoon:{...}, evening:{...},
+//     overrides: { 'YYYY-MM-DD': { morning:{start,end} } } }
+// 有效时间 = overrides[date][slot] ?? 全局的 slot（单日覆盖优先）。
+// 与 miniprogram/utils/slots.js 是同一套规则（两个目录不共享文件系统，只能各抄一份）。
+const CONFIG_DOC_ID = 'slot_times';
+const DEFAULT_TIMES = {
+  morning: { start: '09:30', end: '11:30' },
+  afternoon: { start: '14:00', end: '17:00' },
+  evening: { start: '18:00', end: '21:00' },
+};
+
+// 读配置文档。文档还不存在（第一次用）时退回默认值。
+async function readSlotTimes() {
+  try {
+    const res = await db.collection('timeSlots').doc(CONFIG_DOC_ID).get();
+    const d = res && res.data;
+    if (!d) return { ...DEFAULT_TIMES, overrides: {} };
+    const out = { overrides: (d.overrides && typeof d.overrides === 'object') ? d.overrides : {} };
+    SLOT_KEYS.forEach(k => {
+      const t = d[k];
+      out[k] = (t && t.start && t.end) ? { start: t.start, end: t.end } : { ...DEFAULT_TIMES[k] };
+    });
+    return out;
+  } catch (e) {
+    return { ...DEFAULT_TIMES, overrides: {} };
+  }
+}
+
+// 某一天某个时段的有效时间段（'HH:MM-HH:MM'）
+function effectiveRange(times, date, slot) {
+  const day = times && times.overrides && times.overrides[date];
+  const ov = day && day[slot];
+  const t = (ov && ov.start && ov.end) ? ov : times[slot];
+  return `${t.start}-${t.end}`;
+}
 
 // 妆造（样式）校验：名称 ≤ 20 字，价格 0~99999 元
 const MAX_STYLE_NAME = 20;
@@ -94,6 +131,9 @@ exports.main = async (event) => {
     const open = action === 'open';
     let finalSlot = null;   // 写完之后这个时段的真实状态，回传给客户端打补丁
 
+    // 提示文案里的时间段用「这一天的有效时间段」（单日覆盖优先），不是写死的那张表
+    const slotRange = effectiveRange(await readSlotTimes(), date, slot);
+
     // 查找是否已有该日期记录
     const existing = await db.collection('timeSlots').where({ date }).limit(1).get();
     const record = existing.data && existing.data[0];
@@ -106,7 +146,7 @@ exports.main = async (event) => {
       if (!open && isBooked) {
         return {
           success: false,
-          message: `该时段（${SLOT_NAMES[slot]}）已有预约，请先在预约列表中取消或拒绝后再关闭`,
+          message: `该时段（${slotRange}）已有预约，请先在预约列表中取消或拒绝后再关闭`,
         };
       }
 
@@ -115,7 +155,7 @@ exports.main = async (event) => {
       if (open && isBooked && cleanStyles) {
         return {
           success: false,
-          message: `该时段（${SLOT_NAMES[slot]}）已有预约，不能再修改妆造。如需调整，请先取消或拒绝该预约`,
+          message: `该时段（${slotRange}）已有预约，不能再修改妆造。如需调整，请先取消或拒绝该预约`,
         };
       }
 
@@ -157,8 +197,8 @@ exports.main = async (event) => {
     }
 
     const msg = open
-      ? `已开放 ${SLOT_NAMES[slot]} 预约`
-      : `已关闭 ${SLOT_NAMES[slot]} 预约`;
+      ? `已开放 ${slotRange} 预约`
+      : `已关闭 ${slotRange} 预约`;
     return { success: true, message: msg, date, slot, slotState: finalSlot };
   } catch (err) {
     console.error('adminSetTimeSlot error:', err);

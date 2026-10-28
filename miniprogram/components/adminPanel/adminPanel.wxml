@@ -24,8 +24,8 @@
       <view class="entry-card" bindtap="goSlots">
         <text class="entry-icon">🌷</text>
         <view class="entry-text">
-          <view class="entry-title">时段管理</view>
-          <view class="entry-sub">开放/关闭预约时段</view>
+          <view class="entry-title">时间管理</view>
+          <view class="entry-sub">设置上/下午/晚上时间</view>
         </view>
         <text class="entry-arrow">›</text>
       </view>
@@ -49,9 +49,10 @@
       <view class="notify-btn" bindtap="enableNotify">{{notifyEnabled ? '再开启一次' : '开启'}}</view>
     </view>
 
-    <!-- 课程表：直接开关时段 / 设妆造 / 看顾客详情，不必跳「时段管理」页。
-         与 pages/adminSlots 共用 components/scheduleGrid，两个入口永远一致。 -->
-    <schedule-grid id="scheduleGrid" bind:authfail="handleAuthFail" />
+    <!-- 课程表：直接开关时段 / 设妆造 / 看顾客详情 / 改某一天的时间，不必跳页。
+         components/scheduleGrid 现在只有后台首页这一个宿主。
+         「操作说明」原来挂在被改造成「时间管理」的时段管理页上，搬到这儿。 -->
+    <schedule-grid id="scheduleGrid" show-tips="{{true}}" bind:authfail="handleAuthFail" />
 
     <!-- 统计 -->
     <view class="stats">

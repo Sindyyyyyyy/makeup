@@ -1,6 +1,4 @@
 {
-  "usingComponents": {
-    "schedule-grid": "/components/scheduleGrid/scheduleGrid"
-  },
-  "navigationBarTitleText": "时段管理"
+  "usingComponents": {},
+  "navigationBarTitleText": "时间管理"
 }

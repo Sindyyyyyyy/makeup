@@ -150,6 +150,17 @@
   font-weight: 500;
   min-height: 60rpx;
 }
+/* 这一天的时间被单独改过：时间竖排两行显示在状态文字上方 */
+.slot-btn.has-time {
+  flex-direction: column;
+  padding: 6rpx 0;
+}
+.cell-time {
+  font-size: 20rpx;
+  line-height: 1.2;
+  font-weight: 600;
+  opacity: 0.85;
+}
 .slot-btn.available {
   background: linear-gradient(135deg, #FFE8EE 0%, #FFD4DE 100%);
   color: #C95B7C;

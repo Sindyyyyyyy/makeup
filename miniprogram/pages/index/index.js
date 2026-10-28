@@ -1,7 +1,10 @@
 // pages/index/index.js - 首页 v2.0.0
 // 按身份渲染两套完全不同的界面：顾客看预约课表，化妆师看管理后台。
 // 视图模式由 utils/role.js 的 currentMode() 判定（admin_token 与 admin_mode 分离）。
-const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
+const {
+  SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, computeWeekDates, isSlotExpired,
+  buildSlotRows, normalizeSlotTimes, resolveSlotTime, isCustomTime, formatRange,
+} = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields, sameForm, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
 const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
@@ -22,7 +25,8 @@ Page({
   data: {
     // true=化妆师后台，false=顾客预约。决定整页渲染哪一套界面
     adminMode: false,
-    slots: SLOT_DEFS.map((s, i) => ({ ...s, _idx: i })),
+    // 三行时段标题（含时间）。时间是数据不是代码，loadSchedule 拿到配置后重建
+    slots: buildSlotRows(null),
     weekOffset: 0,
     weekDates: [],
     weekRange: '',
@@ -168,6 +172,11 @@ Page({
     const tsMap = {};
     (res.result.timeSlots || []).forEach(r => { tsMap[r.date] = r; });
 
+    // 时段配置（全局三段 + 单日覆盖）。服务端随 listWeekSchedule 一起带回来，
+    // 不为了取时间再多打一次云函数调用。缺字段时 normalizeSlotTimes 退回默认值。
+    const slotTimes = normalizeSlotTimes(res.result.slotTimes);
+    this._slotTimes = slotTimes;
+
     // 服务端返回的是本人全部预约（不限本周），网格只认本周且仍占用中的
     const weekSet = new Set(weekDates.map(d => d.date));
     const myBkMap = {};
@@ -189,7 +198,9 @@ Page({
       })
       .map(b => ({
         ...b,
-        slotLabel: SLOT_NAME_MAP[b.slot] || b.slot,
+        // 预约自带的时间段快照才是权威值（化妆师改过时间它会跟着更新），
+        // SLOT_NAME_MAP 只是它缺失时的兜底。
+        slotLabel: b.slotName || SLOT_NAME_MAP[b.slot] || b.slot,
       }));
 
     const grid = [[], [], []];
@@ -199,21 +210,27 @@ Page({
         const day = weekDates[d];
         const key = `${day.date}_${slotKey}`;
 
+        // 这一格的有效时间段（单日覆盖优先）和「是否被单独改过」
+        const eff = resolveSlotTime(slotTimes, day.date, slotKey);
+        const time = formatRange(eff);
+        const custom = isCustomTime(slotTimes, day.date, slotKey);
+
         if (myBkMap[key]) {
-          grid[s][d] = { status: 'mine', bookingId: myBkMap[key] };
+          grid[s][d] = { status: 'mine', bookingId: myBkMap[key], time, tStart: eff.start, tEnd: eff.end, custom };
           continue;
         }
         // 已过去的日期一律不可预约，标「时段已过」而不是「暂未开放」——
-// 那天只是过去了，和化妆师有没有开放是两回事
+        // 那天只是过去了，和化妆师有没有开放是两回事
         if (day.isPast) {
-          grid[s][d] = { status: 'past', slotState: null };
+          grid[s][d] = { status: 'past', slotState: null, time, tStart: eff.start, tEnd: eff.end, custom };
           continue;
         }
 
         // 当天已过结束时刻的时段同样不可预约（如上午 10 点不能再约 09:30-11:30）。
+        // 结束时刻取这一格的有效时间（配置里的值，不是写死的整数小时）。
         // 只是前端体验，服务端 createBooking 还会再校验一次。
-        if (isSlotExpired(day.date, slotKey)) {
-          grid[s][d] = { status: 'expired', slotState: null };
+        if (isSlotExpired(day.date, eff.end)) {
+          grid[s][d] = { status: 'expired', slotState: null, time, tStart: eff.start, tEnd: eff.end, custom };
           continue;
         }
 
@@ -221,18 +238,19 @@ Page({
         const slotState = ts ? ts[slotKey] : null;
         if (slotState && typeof slotState === 'object') {
           if (slotState.booked === true) {
-            grid[s][d] = { status: 'taken', slotState };
+            grid[s][d] = { status: 'taken', slotState, time, tStart: eff.start, tEnd: eff.end, custom };
           } else if (slotState.open !== true) {
-            grid[s][d] = { status: 'locked', slotState };
+            grid[s][d] = { status: 'locked', slotState, time, tStart: eff.start, tEnd: eff.end, custom };
           } else {
-            grid[s][d] = { status: 'available', slotState };
+            grid[s][d] = { status: 'available', slotState, time, tStart: eff.start, tEnd: eff.end, custom };
           }
         } else {
-          grid[s][d] = { status: 'locked', slotState: null };
+          grid[s][d] = { status: 'locked', slotState: null, time, tStart: eff.start, tEnd: eff.end, custom };
         }
       }
     }
-    this.setData({ grid, myBookings });
+    // 行标题上的时间用全局配置
+    this.setData({ grid, myBookings, slots: buildSlotRows(slotTimes) });
     this._loadedAt = Date.now();
     this._dirty = false;
   },
@@ -278,7 +296,7 @@ Page({
   },
 
   onSlotTap(e) {
-    const { date, slot, label, status, styles } = e.currentTarget.dataset;
+    const { date, slot, name, time, status, styles } = e.currentTarget.dataset;
     if (status !== 'available') return;
 
     const list = Array.isArray(styles) ? styles : [];
@@ -286,7 +304,9 @@ Page({
       showModal: true,
       modalDate: date,
       modalSlot: slot,
-      modalInfo: `${date} ${label}`,
+      // 时段名（本地化）+ 这一格的**有效时间段**（单日覆盖优先），
+      // 顾客下单前看得到准时间，不会白跑一趟
+      modalInfo: `${date} ${name || ''} ${time || ''}`.trim(),
       modalStyles: list,
       selectedStyle: list.length === 1 ? 0 : -1,
     });

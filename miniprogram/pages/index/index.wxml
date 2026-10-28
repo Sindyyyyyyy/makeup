@@ -58,11 +58,19 @@
       </view>
       <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
         <block wx:if="{{grid[slot._idx][date._idx].status === 'available'}}">
-          <view class="slot-btn available"
+          <view class="slot-btn available {{grid[slot._idx][date._idx].custom ? 'has-time' : ''}}"
                 bindtap="onSlotTap"
                 data-date="{{date.date}}" data-slot="{{slot.key}}"
-                data-label="{{slot.time}}" data-status="available"
+                data-name="{{L.slot[slot.key]}}"
+                data-time="{{grid[slot._idx][date._idx].time}}"
+                data-status="available"
                 data-styles="{{grid[slot._idx][date._idx].slotState.styles}}">
+            <!-- 这一天的时间被化妆师单独改过时，把准时间竖排显示出来
+                 （格子只有 67rpx 宽，'10:00-12:00' 横排不下） -->
+            <block wx:if="{{grid[slot._idx][date._idx].custom}}">
+              <text class="cell-time">{{grid[slot._idx][date._idx].tStart}}</text>
+              <text class="cell-time">{{grid[slot._idx][date._idx].tEnd}}</text>
+            </block>
             <text>{{L.index.slotAvailable}}</text>
           </view>
         </block>

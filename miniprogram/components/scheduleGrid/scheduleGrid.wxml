@@ -33,6 +33,8 @@
               data-slot="{{slot.key}}"
               data-past="{{grid[slot._idx][date._idx].past}}"
               data-expired="{{grid[slot._idx][date._idx].expired}}">
+          <!-- 这一天的这个时段被单独改过时间：角标提示，具体时间看弹窗 -->
+          <text wx:if="{{grid[slot._idx][date._idx].custom}}" class="time-flag">⏱</text>
           <!-- 已过去的日期（除已完成外）一律显示「时段已过」并置灰 -->
           <block wx:if="{{grid[slot._idx][date._idx].past}}">
             <text>🚫 时段已过</text>
@@ -53,7 +55,7 @@
     <view wx:if="{{loading}}" class="loading-tip">加载中…</view>
   </view>
 
-  <!-- 说明（仅时段管理页显示） -->
+  <!-- 说明（后台首页显示） -->
   <view wx:if="{{showTips}}" class="tips">
     <view class="tips-title">💡 操作说明</view>
     <view class="tips-item">· 点击格子可开放/关闭该时段，并添加该时段可画的妆造与价格</view>
@@ -62,6 +64,7 @@
     <view class="tips-item">· 已完成的时段默认不可点击，妆造与状态均已锁定</view>
     <view class="tips-item">· 今天以前的时段除「已完成」外一律显示「时段已过」，不再接受修改</view>
     <view class="tips-item">· 当天已过结束时刻且无人预约的时段（如 11 点后的上午）也显示「时段已过」；已预约/已完成的仍保留原状态，方便查看和处理</view>
+    <view class="tips-item">· 格子右上角的 ⏱ 表示这一天的这个时段被单独改过时间，点开弹窗点「改这天」可以调；每天的默认起止时间在「时间管理」里改</view>
   </view>
 </view>
 
@@ -75,6 +78,29 @@
 
     <view wx:if="{{modalBooked}}" class="booked-tip">
       🔒 该时段已有预约，妆造与价格已锁定，不可修改
+    </view>
+
+    <!-- 这一天的时段时间（单日覆盖）。全局默认在「时间管理」页改，这里只改这一天。 -->
+    <view class="time-row">
+      <text class="time-row-label">时间</text>
+      <text class="time-row-value">{{modalTimeRange}}</text>
+      <text wx:if="{{timeCustom}}" class="time-row-flag">已单独调整</text>
+      <view class="time-row-btn" bindtap="toggleTimeEdit">{{showTimeEdit ? '收起' : '改这天'}}</view>
+    </view>
+    <view wx:if="{{showTimeEdit}}" class="time-edit">
+      <view class="time-edit-pickers">
+        <picker mode="time" value="{{timeStart}}" bindchange="onTimeStartChange">
+          <view class="time-picker">开始 {{timeStart}}</view>
+        </picker>
+        <picker mode="time" value="{{timeEnd}}" bindchange="onTimeEndChange">
+          <view class="time-picker">结束 {{timeEnd}}</view>
+        </picker>
+      </view>
+      <view class="time-edit-actions">
+        <view class="time-save" bindtap="saveCellTime">保存时间</view>
+        <view wx:if="{{timeCustom}}" class="time-clear" bindtap="clearCellTime">恢复默认</view>
+      </view>
+      <view class="time-edit-hint">改完当天生效，不影响别的日期；未完成的预约会同步到新时间。</view>
     </view>
 
     <view wx:if="{{!modalBooked}}" class="quick-wrap">
