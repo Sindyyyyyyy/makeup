@@ -1,36 +1,38 @@
-<!-- 顾客预约（adminMode=false 时渲染） -->
+<!-- 顾客预约（adminMode=false 时渲染）
+     文案全部走 data.L（utils/i18n.js 的字典）：WXML 不能调用 JS 函数，
+     所以语言切换只能靠整份字典进 data 后重渲染。 -->
 <block wx:if="{{!adminMode}}">
 <view class="container">
   <!-- 顶部欢迎区 -->
   <view class="header">
-    <text class="title">💄 预约化妆时间</text>
-    <text class="subtitle">胡鲁诺的化妆工作室 · 一对一专属服务</text>
+    <text class="title">{{L.index.title}}</text>
+    <text class="subtitle">{{L.index.subtitle}}</text>
   </view>
 
   <!-- 周导航 -->
   <view class="week-nav">
-    <view class="nav-btn" bindtap="prevWeek">◀ 上周</view>
+    <view class="nav-btn" bindtap="prevWeek">{{L.index.prevWeek}}</view>
     <view class="week-label">{{weekRange}}</view>
-    <view class="nav-btn" bindtap="nextWeek">下周 ▶</view>
+    <view class="nav-btn" bindtap="nextWeek">{{L.index.nextWeek}}</view>
   </view>
 
   <!-- 图例 -->
   <view class="legend">
     <view class="legend-item">
       <view class="legend-dot dot-available"></view>
-      <text>可约</text>
+      <text>{{L.index.legendAvailable}}</text>
     </view>
     <view class="legend-item">
       <view class="legend-dot dot-locked"></view>
-      <text>不可预约</text>
+      <text>{{L.index.legendLocked}}</text>
     </view>
     <view class="legend-item">
       <view class="legend-dot dot-taken"></view>
-      <text>已占</text>
+      <text>{{L.index.legendTaken}}</text>
     </view>
     <view class="legend-item">
       <view class="legend-dot dot-mine"></view>
-      <text>我的</text>
+      <text>{{L.index.legendMine}}</text>
     </view>
   </view>
 
@@ -40,16 +42,18 @@
     <view class="row header-row">
       <view class="cell time-label"></view>
       <view wx:for="{{weekDates}}" wx:key="date" class="cell date-header {{item.isPast ? 'past' : ''}}">
-        <view class="dow">{{item.dow}}</view>
+        <!-- 星期几按 _idx（周一起 0..6）取字典，后台的 scheduleGrid 仍用 item.dow -->
+        <view class="dow">{{L.dow[item._idx]}}</view>
         <view class="date">{{item.dateLabel}}</view>
-        <view wx:if="{{item.isToday}}" class="today-tag">今天</view>
+        <view wx:if="{{item.isToday}}" class="today-tag">{{L.index.today}}</view>
       </view>
     </view>
 
     <!-- 时段行 -->
     <view wx:for="{{slots}}" wx:for-item="slot" wx:key="key" class="row slot-row">
       <view class="cell time-label">
-        <view class="slot-name">{{slot.name}}</view>
+        <!-- 时段名按 key 取字典，存库的 slot 值本来就是 morning/afternoon/evening -->
+        <view class="slot-name">{{L.slot[slot.key]}}</view>
         <view class="slot-time">{{slot.time}}</view>
       </view>
       <view wx:for="{{weekDates}}" wx:for-item="date" wx:key="date" class="cell slot-cell">
@@ -59,32 +63,32 @@
                 data-date="{{date.date}}" data-slot="{{slot.key}}"
                 data-label="{{slot.time}}" data-status="available"
                 data-styles="{{grid[slot._idx][date._idx].slotState.styles}}">
-            <text>可约</text>
+            <text>{{L.index.slotAvailable}}</text>
           </view>
         </block>
         <block wx:elif="{{grid[slot._idx][date._idx].status === 'mine'}}">
           <view class="slot-btn mine">
-            <text>我的</text>
+            <text>{{L.index.slotMine}}</text>
           </view>
         </block>
         <block wx:elif="{{grid[slot._idx][date._idx].status === 'taken'}}">
           <view class="slot-btn taken">
-            <text>已占</text>
+            <text>{{L.index.slotTaken}}</text>
           </view>
         </block>
         <block wx:elif="{{grid[slot._idx][date._idx].status === 'expired'}}">
           <view class="slot-btn expired">
-            <text>已过时</text>
+            <text>{{L.index.slotExpired}}</text>
           </view>
         </block>
         <block wx:elif="{{grid[slot._idx][date._idx].status === 'past'}}">
           <view class="slot-btn past">
-            <text>🚫 时段已过</text>
+            <text>{{L.index.slotPast}}</text>
           </view>
         </block>
         <block wx:else>
           <view class="slot-btn locked">
-            <text>🔒 暂未开放</text>
+            <text>{{L.index.slotLocked}}</text>
           </view>
         </block>
       </view>
@@ -93,21 +97,21 @@
 
   <!-- 我的预约 -->
   <view class="my-bookings">
-    <view class="section-title">我的预约</view>
+    <view class="section-title">{{L.index.myBookings}}</view>
     <view wx:if="{{myBookings.length === 0}}" class="empty">
-      还没有预约哦，点击上方「可约」格子开始预约吧 🌸
+      {{L.index.emptyBookings}}
     </view>
     <view wx:for="{{myBookings}}" wx:key="_id" class="booking-card">
       <view class="bd-top">
         <text class="bd-date">{{item.date}} {{item.slotLabel}}</text>
-        <text class="bd-status status-{{item.status}}">{{statusText[item.status]}}</text>
+        <text class="bd-status status-{{item.status}}">{{L.status[item.status]}}</text>
       </view>
-      <view class="bd-info">昵称：{{item.name || '—'}}</view>
-      <view wx:if="{{item.styleName}}" class="bd-info">妆造：{{item.styleName}} · ¥{{item.stylePrice}}</view>
-      <view wx:if="{{item.remark}}" class="bd-note">备注：{{item.remark}}</view>
+      <view class="bd-info">{{L.index.labelNickname}}{{item.name || '—'}}</view>
+      <view wx:if="{{item.styleName}}" class="bd-info">{{L.index.labelStyle}}{{item.styleName}} · ¥{{item.stylePrice}}</view>
+      <view wx:if="{{item.remark}}" class="bd-note">{{L.index.labelRemark}}{{item.remark}}</view>
       <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
-        <button class="btn-detail" size="mini" bindtap="openInfoDetail">详细信息</button>
-        <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">取消预约</button>
+        <button class="btn-detail" size="mini" bindtap="openInfoDetail">{{L.index.detail}}</button>
+        <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">{{L.index.cancelBooking}}</button>
       </view>
     </view>
   </view>
@@ -116,20 +120,20 @@
 <!-- 预约弹窗 -->
 <view wx:if="{{showModal}}" class="modal-mask" bindtap="closeModal">
   <view class="modal" catchtap="noop">
-    <view class="modal-title">预约 {{modalInfo}}</view>
+    <view class="modal-title">{{L.index.modalTitle}} {{modalInfo}}</view>
 
     <view class="form-row">
-      <text class="form-label">昵称</text>
+      <text class="form-label">{{L.index.formNickname}}</text>
       <!-- 昵称取自个人中心（users.nickname），与个人中心始终一致 -->
       <view class="form-static {{nickname ? '' : 'is-empty'}}">
-        {{ nickname || '未设置昵称，请先到个人中心填写' }}
+        {{ nickname || L.index.nicknameMissing }}
       </view>
     </view>
 
     <view class="form-row">
-      <text class="form-label">选择妆造{{modalStyles.length > 0 ? ' *' : ''}}</text>
+      <text class="form-label">{{L.index.selectStyle}}{{modalStyles.length > 0 ? ' *' : ''}}</text>
       <view wx:if="{{modalStyles.length === 0}}" class="style-grid grid-0">
-        该时段暂未设置妆造，提交后由化妆师与你确认
+        {{L.index.noStyleYet}}
       </view>
       <view wx:else class="style-grid grid-{{modalStyles.length > 3 ? 3 : modalStyles.length}}">
         <view wx:for="{{modalStyles}}" wx:key="name"
@@ -142,8 +146,8 @@
     </view>
 
     <view class="modal-buttons">
-      <button class="btn-secondary" bindtap="closeModal">取消</button>
-      <button class="btn-primary" bindtap="submitBooking" loading="{{submitting}}">提交预约</button>
+      <button class="btn-secondary" bindtap="closeModal">{{L.common.cancel}}</button>
+      <button class="btn-primary" bindtap="submitBooking" loading="{{submitting}}">{{L.index.submitBooking}}</button>
     </view>
   </view>
 </view>
@@ -156,11 +160,12 @@
   visible="{{showInfo}}"
   info="{{info}}"
   nickname="{{nickname}}"
-  title="{{infoMode === 'confirm' ? '确认个人信息' : '详细信息'}}"
-  hint="{{infoMode === 'confirm' ? '请确认信息已更新至最新，补全后才能提交预约' : '资料如有变化请及时更新'}}"
+  title="{{infoMode === 'confirm' ? L.index.confirmTitle : L.index.detailTitle}}"
+  hint="{{infoMode === 'confirm' ? L.index.confirmHint : L.index.detailHint}}"
   require-complete="{{infoMode === 'confirm'}}"
   require-photo="{{infoMode === 'confirm'}}"
-  submit-text="{{infoMode === 'confirm' ? '确认并预约' : '保存'}}"
+  submit-text="{{infoMode === 'confirm' ? L.index.confirmSubmit : L.index.saveSubmit}}"
+  lang="{{lang}}"
   bind:close="closeInfo"
   bind:save="onSaveInfo"
 />
@@ -171,13 +176,13 @@
      在小屏上根本看不全。 -->
 <view wx:if="{{showNotice}}" class="modal-mask notice-mask" bindtap="closeNotice">
   <view class="modal notice-modal" catchtap="noop">
-    <view class="modal-title">预约成功</view>
-    <view class="notice-subtitle">请留意以下化妆注意事项</view>
+    <view class="modal-title">{{L.index.bookingSuccess}}</view>
+    <view class="notice-subtitle">{{L.index.noticeSubtitle}}</view>
     <scroll-view class="notice-scroll" scroll-y="true">
       <image class="notice-img" src="{{noticeImg}}" mode="widthFix" show-menu-by-longpress="{{true}}" />
     </scroll-view>
-    <view class="notice-tip">长按上方图片可保存到相册</view>
-    <button class="btn-primary notice-ok" bindtap="closeNotice">我知道了</button>
+    <view class="notice-tip">{{L.index.noticeTip}}</view>
+    <button class="btn-primary notice-ok" bindtap="closeNotice">{{L.index.noticeOk}}</button>
   </view>
 </view>
 </block>

@@ -7,72 +7,75 @@
     <scroll-view scroll-y class="info-scroll">
 
       <view class="form-row">
-        <text class="form-label">昵称</text>
+        <text class="form-label">{{L.info.nickname}}</text>
         <!-- 与个人中心顶部共用同一字段，这里只读展示 -->
         <view class="form-static {{form.nickname ? '' : 'is-empty'}}">
-          {{ form.nickname || '未设置昵称，请到个人中心设置' }}
+          {{ form.nickname || L.info.nicknameMissing }}
         </view>
       </view>
 
       <view class="form-row">
-        <text class="form-label">性别</text>
+        <text class="form-label">{{L.info.gender}}</text>
         <view class="chip-group">
-          <view wx:for="{{genderOptions}}" wx:key="*this"
-                class="chip {{form.gender === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="gender" data-value="{{item}}">{{item}}</view>
+          <!-- item.value 是存进数据库的中文原值，item.label 是当前语言的显示文字 -->
+          <view wx:for="{{genderOptions}}" wx:key="value"
+                class="chip {{form.gender === item.value ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="gender" data-value="{{item.value}}">{{item.label}}</view>
         </view>
       </view>
 
       <view class="form-row">
-        <text class="form-label">肤质</text>
+        <text class="form-label">{{L.info.skinType}}</text>
         <view class="chip-group">
-          <view wx:for="{{skinOptions}}" wx:key="*this"
-                class="chip {{form.skinType === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="skinType" data-value="{{item}}">{{item}}</view>
+          <view wx:for="{{skinOptions}}" wx:key="value"
+                class="chip {{form.skinType === item.value ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="skinType" data-value="{{item.value}}">{{item.label}}</view>
         </view>
       </view>
 
+      <!-- ⚠️ 这里的 '敏感性' 是存库的中文原值，不能换成英文：换个值云函数的白名单就不认了 -->
       <view wx:if="{{form.skinType === '敏感性'}}" class="form-row">
-        <text class="form-label">敏感性程度</text>
-        <input class="form-input" value="{{form.sensitiveLevel}}" placeholder="如：轻微泛红、刺痛"
+        <text class="form-label">{{L.info.sensitiveLevel}}</text>
+        <input class="form-input" value="{{form.sensitiveLevel}}" placeholder="{{L.info.sensitiveLevelPlaceholder}}"
                bindinput="onFormInput" data-field="sensitiveLevel" disabled="{{readonly}}" maxlength="50" />
       </view>
 
       <view class="form-row">
-        <text class="form-label">大面积爆痘</text>
+        <text class="form-label">{{L.info.hasAcne}}</text>
         <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasAcne === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasAcne" data-value="{{item}}">{{item}}</view>
+          <view wx:for="{{yesNoOptions}}" wx:key="value"
+                class="chip {{form.hasAcne === item.value ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasAcne" data-value="{{item.value}}">{{item.label}}</view>
         </view>
       </view>
 
       <view class="form-row">
-        <text class="form-label">整容/医美</text>
+        <text class="form-label">{{L.info.hasCosmeticSurgery}}</text>
         <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasCosmeticSurgery === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasCosmeticSurgery" data-value="{{item}}">{{item}}</view>
+          <view wx:for="{{yesNoOptions}}" wx:key="value"
+                class="chip {{form.hasCosmeticSurgery === item.value ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasCosmeticSurgery" data-value="{{item.value}}">{{item.label}}</view>
         </view>
       </view>
 
       <view class="form-row">
-        <text class="form-label">化妆品/发品过敏</text>
+        <text class="form-label">{{L.info.hasAllergy}}</text>
         <view class="chip-group">
-          <view wx:for="{{yesNoOptions}}" wx:key="*this"
-                class="chip {{form.hasAllergy === item ? 'on' : ''}}"
-                bindtap="onChipTap" data-group="hasAllergy" data-value="{{item}}">{{item}}</view>
+          <view wx:for="{{yesNoOptions}}" wx:key="value"
+                class="chip {{form.hasAllergy === item.value ? 'on' : ''}}"
+                bindtap="onChipTap" data-group="hasAllergy" data-value="{{item.value}}">{{item.label}}</view>
         </view>
       </view>
 
+      <!-- ⚠️ 这里的 '有' 同样是存库的中文原值，不能换 -->
       <view wx:if="{{form.hasAllergy === '有'}}" class="form-row">
-        <text class="form-label">过敏说明</text>
-        <input class="form-input" value="{{form.allergyNote}}" placeholder="如：对某款粉底液过敏"
+        <text class="form-label">{{L.info.allergyNote}}</text>
+        <input class="form-input" value="{{form.allergyNote}}" placeholder="{{L.info.allergyNotePlaceholder}}"
                bindinput="onFormInput" data-field="allergyNote" disabled="{{readonly}}" maxlength="100" />
       </view>
 
       <view class="form-row form-row-col">
-        <text class="form-label">素颜照{{requirePhoto && !readonly ? ' *' : ''}}（{{form.photos.length}}/{{maxPhotos}}）</text>
+        <text class="form-label">{{L.info.photos}}{{requirePhoto && !readonly ? ' *' : ''}}{{L.info.photosOpen}}{{form.photos.length}}/{{maxPhotos}}{{L.info.photosClose}}</text>
         <view class="photo-grid">
           <view wx:for="{{form.photos}}" wx:key="*this" class="photo-item"
                 bindtap="onPreviewPhoto" data-idx="{{index}}">
@@ -85,7 +88,7 @@
           </view>
         </view>
         <view wx:if="{{requirePhoto && !readonly && form.photos.length === 0}}" class="field-warn">
-          至少上传 1 张素颜照才能预约
+          {{L.info.photoRequired}}
         </view>
       </view>
 
@@ -95,10 +98,10 @@
 
     <view class="modal-buttons">
       <block wx:if="{{readonly}}">
-        <button class="btn-secondary" bindtap="onClose">关闭</button>
+        <button class="btn-secondary" bindtap="onClose">{{L.common.close}}</button>
       </block>
       <block wx:else>
-        <button wx:if="{{showCancel}}" class="btn-secondary" bindtap="onClose">取消</button>
+        <button wx:if="{{showCancel}}" class="btn-secondary" bindtap="onClose">{{L.common.cancel}}</button>
         <button class="btn-primary" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">
           {{submitText}}
         </button>

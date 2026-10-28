@@ -9,6 +9,29 @@ const MAX_PHOTOS = 5;
 const MAX_ALLERGY_NOTE = 100;
 const MAX_SENSITIVE_LEVEL = 50;
 
+// ============ 界面语言 ============
+// 客户端每次调用都带 lang。不认识的一律中文 —— 老版本客户端不带这个字段，
+// 老版本云函数也不认识它，两个方向的失败模式都是「显示中文」，不会出错。
+function normalizeLang(l) {
+  return l === 'en' ? 'en' : 'zh';
+}
+
+// 报错文案（客户端会原样弹给顾客）。按仓库约定这里不共享模块，各抄一份。
+const MSG = {
+  zh: {
+    noOpenid: '未取到用户身份',
+    noCollection: `云数据库缺少 ${COLLECTION} 集合，请先在控制台创建`,
+    emptyProfile: '头像和昵称不能同时为空',
+    serverError: '服务异常，请重试',
+  },
+  en: {
+    noOpenid: 'Could not identify the user',
+    noCollection: `Missing database collection "${COLLECTION}" — please create it in the cloud console`,
+    emptyProfile: 'Avatar and nickname cannot both be empty',
+    serverError: 'Server error, please retry',
+  },
+};
+
 // 枚举一律白名单校验，客户端传什么都不直接落库
 const GENDERS = ['男', '女'];
 const SKIN_TYPES = ['干性', '油性', '混合性', '敏感性', '中性'];
@@ -127,9 +150,11 @@ async function readDoc(openid) {
 }
 
 exports.main = async (event, context) => {
+  const lang = normalizeLang(event && event.lang);
+  const msg = MSG[lang];
   const openid = getOpenid(context);
   if (!openid) {
-    return { code: 'NO_OPENID', success: false, message: '未取到用户身份' };
+    return { code: 'NO_OPENID', success: false, message: msg.noOpenid };
   }
 
   const action = (event && event.action) || 'get';
@@ -139,7 +164,7 @@ exports.main = async (event, context) => {
     if (action === 'saveInfo') {
       const { doc, exists, missingCollection } = await readDoc(openid);
       if (missingCollection) {
-        return { success: false, code: 'NO_COLLECTION', message: `云数据库缺少 ${COLLECTION} 集合，请先在控制台创建` };
+        return { success: false, code: 'NO_COLLECTION', message: msg.noCollection };
       }
       const info = normalizeInfo(event.info, doc.info);
       const patch = { info, updateTime: db.serverDate() };
@@ -167,13 +192,13 @@ exports.main = async (event, context) => {
     if (action === 'save') {
       const profile = normalize(event);
       if (!profile.avatarUrl && !profile.nickname) {
-        return { success: false, message: '头像和昵称不能同时为空' };
+        return { success: false, message: msg.emptyProfile };
       }
       // 注意：set() 会整体替换文档，会把 info 表单内容冲掉。
       // 所以文档已存在时必须用 update() 只改这两个字段。
       const { doc, exists, missingCollection } = await readDoc(openid);
       if (missingCollection) {
-        return { success: false, code: 'NO_COLLECTION', message: `云数据库缺少 ${COLLECTION} 集合，请先在控制台创建` };
+        return { success: false, code: 'NO_COLLECTION', message: msg.noCollection };
       }
       const patch = { ...profile, updateTime: db.serverDate() };
       const ref = db.collection(COLLECTION).doc(openid);
@@ -190,7 +215,7 @@ exports.main = async (event, context) => {
     // 默认：读取
     const { doc, exists, missingCollection } = await readDoc(openid);
     if (missingCollection) {
-      return { success: false, code: 'NO_COLLECTION', message: `云数据库缺少 ${COLLECTION} 集合，请先在控制台创建` };
+      return { success: false, code: 'NO_COLLECTION', message: msg.noCollection };
     }
     const info = normalizeInfo(undefined, doc.info);
     return {
@@ -211,8 +236,8 @@ exports.main = async (event, context) => {
       success: false,
       code: missing ? 'NO_COLLECTION' : 'SERVER_ERROR',
       message: missing
-        ? `云数据库缺少 ${COLLECTION} 集合，请先在控制台创建`
-        : '服务异常，请重试',
+        ? msg.noCollection
+        : msg.serverError,
       // 原样带回，方便在控制台/页面 console 里定位，不必猜
       detail: errText(err) || String(err),
       errCode: (err && err.errCode) || null,

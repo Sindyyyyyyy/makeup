@@ -114,7 +114,8 @@
   </view>
 </view>
 
-<!-- 顾客信息（只读），与化妆师后台首页预约卡片的「详细信息」同一个组件 -->
+<!-- 顾客信息（只读），与化妆师后台首页预约卡片的「详细信息」同一个组件。
+     lang="zh"：后台不参与翻译，这个弹窗必须是中文 -->
 <info-form
   visible="{{showUserProfile}}"
   info="{{userInfo}}"
@@ -122,5 +123,6 @@
   title="顾客信息"
   hint="{{userInfoHint}}"
   readonly="{{true}}"
+  lang="zh"
   bind:close="closeUserProfile"
 />

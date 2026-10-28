@@ -116,7 +116,7 @@
   </block>
 </view>
 
-<!-- 顾客个人信息（只读） -->
+<!-- 顾客个人信息（只读）。lang="zh"：后台不参与翻译，这个弹窗必须是中文 -->
 <info-form
   id="userProfileForm"
   visible="{{showUserProfile}}"
@@ -125,5 +125,6 @@
   title="顾客信息"
   hint="{{userInfoHint}}"
   readonly="{{true}}"
+  lang="zh"
   bind:close="closeUserProfile"
 />

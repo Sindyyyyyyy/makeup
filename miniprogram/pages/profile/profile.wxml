@@ -3,7 +3,15 @@
 
   <!-- 资料卡 -->
   <view class="card">
-    <view class="card-title">我的资料</view>
+    <!-- 卡片头：左边标题，右边中/EN 切换。语言只能在顾客自己的手机上切，
+         所以放在这里最显眼（不动导航栏，也就不会碰到右上角的系统胶囊按钮） -->
+    <view class="card-head">
+      <view class="card-title">{{L.profile.myProfile}}</view>
+      <view class="lang-switch">
+        <view class="lang-btn {{lang === 'zh' ? 'on' : ''}}" data-lang="zh" bindtap="onLangTap">中</view>
+        <view class="lang-btn {{lang === 'en' ? 'on' : ''}}" data-lang="en" bindtap="onLangTap">EN</view>
+      </view>
+    </view>
 
     <view class="profile-row">
       <!-- open-type="chooseAvatar" 调起微信头像选择器 -->
@@ -15,35 +23,36 @@
       </button>
 
       <view class="info-col">
-        <view class="nick-label">昵称</view>
+        <view class="nick-label">{{L.profile.nickname}}</view>
         <!-- type="nickname" 调起微信昵称选择器 -->
-        <input class="nick-input" type="nickname" value="{{nickname}}" placeholder="点击选择微信昵称"
+        <input class="nick-input" type="nickname" value="{{nickname}}" placeholder="{{L.profile.nicknamePlaceholder}}"
                bindinput="onNicknameInput" bindblur="onNicknameInput" maxlength="20" />
-        <view class="tip">点头像换头像，点昵称用微信昵称</view>
+        <view class="tip">{{L.profile.nicknameTip}}</view>
       </view>
     </view>
 
     <button class="btn-primary save-btn" bindtap="onSave" loading="{{saving}}" disabled="{{saving || !dirty}}">
-      保存资料
+      {{L.profile.saveProfile}}
     </button>
   </view>
 
   <!-- 个人信息表入口 -->
   <view class="card info-entry-card" bindtap="openInfo">
     <view class="info-entry-left">
-      <view class="info-entry-title">个人信息</view>
+      <view class="info-entry-title">{{L.profile.infoEntryTitle}}</view>
       <view class="info-entry-sub">
-        性别、肤质、爆痘、医美、过敏、素颜照
+        {{L.profile.infoEntrySub}}
       </view>
     </view>
     <view class="info-entry-right">
-      <text class="info-entry-state">{{ hasInfo ? '已填写' : '去填写' }}</text>
+      <text class="info-entry-state">{{ hasInfo ? L.profile.filled : L.profile.fill }}</text>
       <text class="info-entry-arrow">›</text>
     </view>
   </view>
 
   <!-- 化妆品管理入口：仅化妆师视图可见。角标只读 storage 缓存，
-       不为了这个数字发云函数调用（见 profile.js 的 refreshCosmeticBadge） -->
+       不为了这个数字发云函数调用（见 profile.js 的 refreshCosmeticBadge）。
+       这一整块属于化妆师后台，**不参与翻译**，保持中文。 -->
   <view wx:if="{{isAdmin}}" class="card info-entry-card" bindtap="openCosmetics">
     <view class="info-entry-left">
       <view class="info-entry-title">化妆品管理</view>
@@ -57,10 +66,10 @@
 
   <!-- 双端切换入口：化妆师和顾客看到的是同一个位置、文案相反 -->
   <view wx:if="{{!isAdmin}}" class="admin-entry" bindtap="goAdmin">
-    <text>🌷 化妆师入口</text>
+    <text>{{L.profile.artistEntry}}</text>
   </view>
   <view wx:else class="admin-entry" bindtap="goCustomer">
-    <text>💄 顾客端入口</text>
+    <text>{{L.profile.customerEntry}}</text>
   </view>
 
 </view>
@@ -71,8 +80,9 @@
   visible="{{showInfo}}"
   info="{{info}}"
   nickname="{{nickname}}"
-  title="个人信息"
-  submit-text="保存"
+  title="{{L.info.title}}"
+  submit-text="{{L.common.save}}"
+  lang="{{lang}}"
   bind:close="closeInfo"
   bind:save="onSaveInfo"
 />

@@ -1,10 +1,11 @@
 // pages/index/index.js - 首页 v2.0.0
 // 按身份渲染两套完全不同的界面：顾客看预约课表，化妆师看管理后台。
 // 视图模式由 utils/role.js 的 currentMode() 判定（admin_token 与 admin_mode 分离）。
-const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, STATUS_TEXT, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
+const { SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, computeWeekDates, isSlotExpired } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields, sameForm, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
 const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
+const { getLang, getDict, t, listJoin } = require('../../utils/i18n.js');
 
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
 const LOAD_TTL = 60 * 1000;
@@ -13,6 +14,7 @@ const LOAD_TTL = 60 * 1000;
 // getNoticeImage 不查数据库，只把一个固定的云存储 fileID 换成 https 临时链接，
 // 而链接约 2 小时后才过期——每次预约都换一次是纯浪费的云函数调用。
 // TTL 取 1.5 小时留出余量，避免卡在过期边界上给顾客一张打不开的图。
+// 缓存按语言分桶：中英文是两张不同的图，混用会拿到另一种语言的图。
 const NOTICE_CACHE_KEY = 'notice_img_cache';
 const NOTICE_TTL = 90 * 60 * 1000;
 
@@ -26,7 +28,6 @@ Page({
     weekRange: '',
     grid: [[], [], []],
     myBookings: [],
-    statusText: STATUS_TEXT,
     showModal: false,
     modalInfo: '',
     modalDate: '',
@@ -44,9 +45,13 @@ Page({
     // 云函数拿到 https 临时链接后会替换成可长按保存的那份
     showNotice: false,
     noticeImg: '/images/notice.jpg',
+    // 界面语言。'zh' | 'en'，以及整份文案字典 L（模板里写 {{L.index.xxx}}）
+    lang: '',
+    L: {},
   },
 
   onLoad() {
+    this.applyLang();
     this.applyWeek(0);
     // 页面级节流状态：_loadedAt 是上次成功拉取的本地时间戳，_dirty 表示
     // 本地有过变更（下单/取消）需要下次进入时强制重拉
@@ -56,6 +61,9 @@ Page({
   },
 
   onShow() {
+    // 语言可能在个人中心改过。个人中心是 tab 页，切回首页必然走 onShow，
+    // 所以这里重读一次语言即可，不需要订阅/发布机制。
+    this.applyLang();
     // 模式每次切回来都要重算：可能在个人中心点了「化妆师入口/顾客端入口」。
     // 切回顾客端时 applyMode 会把 _loadedAt 清零，这里自然触发一次重拉。
     this.applyMode(currentMode());
@@ -67,6 +75,18 @@ Page({
     // 避免反复切 tab 每次都打两次云函数。下拉刷新仍可强制拉取。
     const fresh = Date.now() - (this._loadedAt || 0) < LOAD_TTL;
     if (this._dirty || !this._loadedAt || !fresh) this.loadAll();
+  },
+
+  // ============ 语言 ============
+  // 语言存在本地（storage 的 ui_lang），没手动选过时跟随微信系统语言。
+  // 整份字典进 data.L —— WXML 不能调用 JS 函数，只能这么渲染。
+  // 切 tab 回来时 onShow 必然触发，所以语言一变这边一定会重渲染。
+  applyLang() {
+    const lang = getLang();
+    if (lang === this.data.lang) return;
+    // 换语言时把注意事项图退回包内兜底图：上一语言的临时链接还在 data 里，
+    // 不清掉的话英文界面会先闪一张中文图。
+    this.setData({ lang, L: getDict(lang), noticeImg: '/images/notice.jpg' });
   },
 
   // 统一切换整页形态：顾客预约 ⇄ 化妆师后台，并让 tabBar 文案/图标跟着变
@@ -126,7 +146,7 @@ Page({
       await this.loadSchedule();
     } catch (e) {
       console.error('加载失败', e);
-      wx.showToast({ title: '加载失败，请重试', icon: 'none' });
+      wx.showToast({ title: t('common.loadFailed'), icon: 'none' });
     }
   },
 
@@ -237,7 +257,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
-        data: { action: 'get' },
+        data: { action: 'get', lang: this.data.lang },
       });
       const r = res.result;
       if (!r || !r.success || !r.profile) return;
@@ -294,19 +314,26 @@ Page({
     if (!cached) this.fetchNoticeUrl();
   },
 
+  // 注意事项图的缓存按语言分桶 —— 中英文是两张不同的图，
+  // 混用会拿到另一种语言的临时链接。
+  noticeCacheKey() {
+    return `${NOTICE_CACHE_KEY}:${this.data.lang || 'zh'}`;
+  },
+
   // 返回一个仍在有效期内的临时链接，没有则返回空串
   cachedNoticeUrl() {
-    const c = wx.getStorageSync(NOTICE_CACHE_KEY);
+    const c = wx.getStorageSync(this.noticeCacheKey());
     if (c && c.url && Date.now() - (c.at || 0) < NOTICE_TTL) return c.url;
     return '';
   },
 
   async fetchNoticeUrl() {
+    const lang = this.data.lang || 'zh';
     try {
-      const res = await wx.cloud.callFunction({ name: 'getNoticeImage' });
+      const res = await wx.cloud.callFunction({ name: 'getNoticeImage', data: { lang } });
       const r = res && res.result;
       if (!r || !r.success || !r.url) return;
-      wx.setStorageSync(NOTICE_CACHE_KEY, { url: r.url, at: Date.now() });
+      wx.setStorageSync(this.noticeCacheKey(), { url: r.url, at: Date.now() });
       this.setData({ noticeImg: r.url });
     } catch (err) {
       // 保持包内兜底图：它至少显示得出来，只是长按存不到相册
@@ -326,16 +353,18 @@ Page({
   async submitBooking() {
     const { nickname, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
     if (!(nickname || '').trim()) {
-      return wx.showToast({ title: '请先到个人中心设置昵称', icon: 'none' });
+      return wx.showToast({ title: t('index.nicknameRequired'), icon: 'none' });
     }
     if (modalStyles.length > 0 && selectedStyle < 0) {
-      return wx.showToast({ title: '请选择要画的妆造', icon: 'none' });
+      return wx.showToast({ title: t('index.styleRequired'), icon: 'none' });
     }
 
     await this.loadProfile();
     const missing = missingFields(this.data.info, { requirePhoto: true });
     if (missing.length) {
-      wx.showToast({ title: `还差：${missing.slice(0, 2).join('、')}`, icon: 'none' });
+      // missingFields() 返回的是中文字段名（与云函数 createBooking 的规则必须一致），
+      // 显示时翻译成当前语言的标签。分隔符也按语言走：中文「、」英文「, 」。
+      wx.showToast({ title: t('common.missing') + listJoin(missing.slice(0, 2)), icon: 'none' });
     }
     this.setData({ showInfo: true, infoMode: 'confirm' });
   },
@@ -389,11 +418,11 @@ Page({
     try {
       const saveRes = await wx.cloud.callFunction({
         name: 'userProfile',
-        data: { action: 'saveInfo', nickname: this.data.nickname, info: form },
+        data: { action: 'saveInfo', nickname: this.data.nickname, info: form, lang: this.data.lang },
       });
       if (!saveRes.result || !saveRes.result.success) {
         console.error('保存个人信息失败：', saveRes.result);
-        wx.showToast({ title: (saveRes.result && saveRes.result.message) || '保存失败', icon: 'none' });
+        wx.showToast({ title: (saveRes.result && saveRes.result.message) || t('common.saveFailed'), icon: 'none' });
         return;
       }
       const info = toForm(saveRes.result.info, this.data.nickname);
@@ -406,11 +435,11 @@ Page({
       if (isConfirm) {
         await this.doCreateBooking();
       } else {
-        wx.showToast({ title: '已更新', icon: 'success' });
+        wx.showToast({ title: t('common.updated'), icon: 'success' });
       }
     } catch (err) {
       console.error('保存个人信息异常：', err);
-      wx.showToast({ title: (err && err.message) || '保存失败，请重试', icon: 'none' });
+      wx.showToast({ title: (err && err.message) || t('common.saveFailedRetry'), icon: 'none' });
     } finally {
       if (formCmp) formCmp.setSubmitting(false);
       this.setData({ submitting: false });
@@ -430,6 +459,7 @@ Page({
           slot: modalSlot,
           name: (nickname || '').trim(),
           styleName: style ? style.name : '',
+          lang: this.data.lang,
         },
       });
       if (res.result && res.result.success) {
@@ -439,7 +469,7 @@ Page({
       } else if (res.result && res.result.code === 'NO_OPENID') {
         // 服务端拿不到身份，长文本用弹窗展示，避免 toast 截断
         wx.showModal({
-          title: '无法提交预约',
+          title: t('index.cannotSubmit'),
           content: res.result.message,
           showCancel: false,
         });
@@ -448,14 +478,14 @@ Page({
         // 重新拉一次云端，以云端为准把缺项回显在表里让用户当场补
         await this.loadProfile();
         this.setData({ showInfo: true });
-        wx.showToast({ title: '请先补全个人信息', icon: 'none' });
+        wx.showToast({ title: t('index.profileIncomplete'), icon: 'none' });
       } else {
-        wx.showToast({ title: (res.result && res.result.message) || '提交失败', icon: 'none', duration: 2500 });
+        wx.showToast({ title: (res.result && res.result.message) || t('common.submitFailed'), icon: 'none', duration: 2500 });
         this.loadSchedule();
       }
     } catch (e) {
       console.error(e);
-      wx.showToast({ title: '提交失败', icon: 'none' });
+      wx.showToast({ title: t('common.submitFailed'), icon: 'none' });
     } finally {
       this.setData({ submitting: false });
     }
@@ -465,25 +495,25 @@ Page({
     const { id } = e.currentTarget.dataset;
     const that = this;
     wx.showModal({
-      title: '确认取消？',
-      content: '取消后该时段将重新开放',
+      title: t('index.confirmCancelTitle'),
+      content: t('index.confirmCancelContent'),
       confirmColor: '#C95B7C',
       success: async (r) => {
         if (!r.confirm) return;
         try {
           const res = await wx.cloud.callFunction({
             name: 'cancelBooking',
-            data: { bookingId: id },
+            data: { bookingId: id, lang: that.data.lang },
           });
           if (res.result && res.result.success) {
-            wx.showToast({ title: '已取消', icon: 'success' });
+            wx.showToast({ title: t('index.cancelled'), icon: 'success' });
             that.loadAll();
           } else {
-            wx.showToast({ title: (res.result && res.result.message) || '操作失败', icon: 'none' });
+            wx.showToast({ title: (res.result && res.result.message) || t('common.operationFailed'), icon: 'none' });
           }
         } catch (e) {
           console.error(e);
-          wx.showToast({ title: '操作失败', icon: 'none' });
+          wx.showToast({ title: t('common.operationFailed'), icon: 'none' });
         }
       },
     });

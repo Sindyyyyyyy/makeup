@@ -9,6 +9,74 @@ const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: 
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
+// ============ 界面语言 ============
+// 客户端每次调用都带 lang。不认识的一律中文 —— 老版本客户端不带这个字段，
+// 老版本云函数也不认识它，两个方向的失败模式都是「显示中文」，不会出错。
+function normalizeLang(l) {
+  return l === 'en' ? 'en' : 'zh';
+}
+
+// 缺项字段名 → 英文标签。**只用于拼 message**：
+// missing[] 数组本身必须保持中文（前端 utils/profileInfo.js 的规则要跟它对齐），
+// 但 message 是给人看的，英文界面里蹦出中文字段名很露馅。
+const FIELD_LABEL_EN = {
+  '昵称': 'Nickname',
+  '性别': 'Gender',
+  '肤质': 'Skin Type',
+  '敏感性程度': 'Sensitivity',
+  '大面积爆痘': 'Severe Acne',
+  '整容/医美': 'Surgery',
+  '化妆品/发品过敏': 'Product Allergy',
+  '过敏说明': 'Allergy Details',
+  '素颜照': 'Bare-face Photo',
+};
+
+// 按仓库约定这里不共享模块，各抄一份。
+const MSG = {
+  zh: {
+    badParams: '参数不完整',
+    badDate: '日期格式不正确',
+    badSlot: '无效时段',
+    pastDate: '不能预约已过去的日期',
+    slotExpired: (slot) => `该时段（${slot}）已过时，无法预约`,
+    styleTooLong: (n) => `妆造名称不能超过 ${n} 个字`,
+    nameRequired: '请填写姓名',
+    nameTooLong: (n) => `昵称不能超过 ${n} 个字`,
+    skinTooLong: (n) => `肤质描述不能超过 ${n} 个字`,
+    remarkTooLong: (n) => `备注不能超过 ${n} 个字`,
+    profileIncomplete: (list) => `请先补全个人信息：${list.join('、')}`,
+    duplicated: '你已经预约过该时段，请勿重复提交',
+    noSlotData: '未找到该日期的时段数据，请联系化妆师开启预约',
+    slotNotOpen: (slot) => `该时段（${slot}）未开放预约`,
+    styleGone: '所选妆造已不在该时段的开放列表中，请重新选择',
+    styleRequired: '请选择要画的妆造',
+    justBooked: (slot) => `该时段（${slot}）刚被预约，请刷新后重试`,
+    ok: '预约提交成功，等待化妆师确认',
+    serverError: (e) => '服务器错误：' + e,
+  },
+  en: {
+    badParams: 'Missing parameters',
+    badDate: 'Invalid date format',
+    badSlot: 'Invalid time slot',
+    pastDate: 'Cannot book a date in the past',
+    slotExpired: (slot) => `This slot (${slot}) has already passed`,
+    styleTooLong: (n) => `Style name cannot exceed ${n} characters`,
+    nameRequired: 'Please enter a name',
+    nameTooLong: (n) => `Nickname cannot exceed ${n} characters`,
+    skinTooLong: (n) => `Skin description cannot exceed ${n} characters`,
+    remarkTooLong: (n) => `Note cannot exceed ${n} characters`,
+    profileIncomplete: (list) => `Please complete your profile: ${list.join(', ')}`,
+    duplicated: 'You have already booked this slot',
+    noSlotData: 'No schedule for this date — please ask the artist to open booking',
+    slotNotOpen: (slot) => `This slot (${slot}) is not open for booking`,
+    styleGone: 'That style is no longer available — please choose another one',
+    styleRequired: 'Please choose a makeup style',
+    justBooked: (slot) => `This slot (${slot}) was just booked — please refresh and retry`,
+    ok: 'Booking submitted — waiting for the artist to confirm',
+    serverError: (e) => 'Server error: ' + e,
+  },
+};
+
 // ============ 订阅消息（按仓库约定各抄一份，不共享模块）============
 // 模板 ID 在 公众平台 → 订阅消息 → 我的模板 申请后填写。
 // 与 miniprogram/utils/notify.js 保持一致，改一处要改三处云函数。
@@ -164,6 +232,8 @@ function currentOpenid(context) {
 
 exports.main = async (event, context) => {
   const { date, slot, name, skinType, remark, styleName } = event;
+  const lang = normalizeLang(event && event.lang);
+  const msg = MSG[lang];
   const openid = currentOpenid(context);
 
   // 顾客端不再需要密码，身份由 openid 决定
@@ -185,18 +255,18 @@ exports.main = async (event, context) => {
   }
 
   if (!date || !slot || !name) {
-    return { success: false, message: '参数不完整' };
+    return { success: false, message: msg.badParams };
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { success: false, message: '日期格式不正确' };
+    return { success: false, message: msg.badDate };
   }
   if (!SLOT_KEYS.includes(slot)) {
-    return { success: false, message: '无效时段' };
+    return { success: false, message: msg.badSlot };
   }
 
   // 禁止预约过去的日期（服务端强校验，不依赖客户端时钟）
   if (date < todayStr(0)) {
-    return { success: false, message: '不能预约已过去的日期' };
+    return { success: false, message: msg.pastDate };
   }
 
   // 禁止预约当天已过结束时刻的时段（如上午 10 点不能再约 09:30-11:30）。
@@ -204,7 +274,7 @@ exports.main = async (event, context) => {
   const now = beijingNow();
   const endHour = SLOT_END_HOUR[slot];
   if (endHour !== undefined && date === now.date && now.hour >= endHour) {
-    return { success: false, message: `该时段（${SLOT_NAMES[slot]}）已过时，无法预约` };
+    return { success: false, message: msg.slotExpired(SLOT_NAMES[slot]) };
   }
 
   const cleanName = String(name).trim();
@@ -213,21 +283,23 @@ exports.main = async (event, context) => {
   const cleanSkin = String(skinType || '').trim();
   const cleanRemark = String(remark || '').trim();
   const cleanStyleName = String(styleName || '').trim();
-  if (cleanStyleName.length > MAX.styleName) return { success: false, message: `妆造名称不能超过 ${MAX.styleName} 个字` };
-  if (!cleanName) return { success: false, message: '请填写姓名' };
-  if (cleanName.length > MAX.name) return { success: false, message: `昵称不能超过 ${MAX.name} 个字` };
-  if (cleanSkin.length > MAX.skinType) return { success: false, message: `肤质描述不能超过 ${MAX.skinType} 个字` };
-  if (cleanRemark.length > MAX.remark) return { success: false, message: `备注不能超过 ${MAX.remark} 个字` };
+  if (cleanStyleName.length > MAX.styleName) return { success: false, message: msg.styleTooLong(MAX.styleName) };
+  if (!cleanName) return { success: false, message: msg.nameRequired };
+  if (cleanName.length > MAX.name) return { success: false, message: msg.nameTooLong(MAX.name) };
+  if (cleanSkin.length > MAX.skinType) return { success: false, message: msg.skinTooLong(MAX.skinType) };
+  if (cleanRemark.length > MAX.remark) return { success: false, message: msg.remarkTooLong(MAX.remark) };
 
   // 个人信息必须完整（服务端强校验，与前端 utils/profileInfo.js 规则一致）
   const userDoc = await readUserDoc(openid);
   const missing = missingProfileFields(userDoc && userDoc.nickname, userDoc && userDoc.info);
   if (missing.length) {
+    // missing[] 保持中文（前后端规则要一致），只把 message 里的字段名翻成英文
+    const labels = lang === 'en' ? missing.map(m => FIELD_LABEL_EN[m] || m) : missing;
     return {
       success: false,
       code: 'PROFILE_INCOMPLETE',
       missing,
-      message: `请先补全个人信息：${missing.join('、')}`,
+      message: msg.profileIncomplete(labels),
     };
   }
 
@@ -239,7 +311,7 @@ exports.main = async (event, context) => {
     status: db.command.in(['pending', 'confirmed']),
   }).limit(1).get();
   if (dup.data && dup.data.length > 0) {
-    return { success: false, message: '你已经预约过该时段，请勿重复提交' };
+    return { success: false, message: msg.duplicated };
   }
 
   try {
@@ -247,11 +319,11 @@ exports.main = async (event, context) => {
     const slotRes = await db.collection('timeSlots').where({ date }).limit(1).get();
     const slotDoc = slotRes.data && slotRes.data[0];
     if (!slotDoc) {
-      return { success: false, message: '未找到该日期的时段数据，请联系化妆师开启预约' };
+      return { success: false, message: msg.noSlotData };
     }
     const slotData = slotDoc[slot];
     if (!slotData || !slotData.open) {
-      return { success: false, message: `该时段（${SLOT_NAMES[slot]}）未开放预约` };
+      return { success: false, message: msg.slotNotOpen(SLOT_NAMES[slot]) };
     }
 
     // 服务端校验所选妆造确实在该时段的开放列表中，价格以服务端配置为准
@@ -261,12 +333,12 @@ exports.main = async (event, context) => {
     if (cleanStyleName) {
       const matched = styleList.find(s => s && s.name === cleanStyleName);
       if (!matched) {
-        return { success: false, message: '所选妆造已不在该时段的开放列表中，请重新选择' };
+        return { success: false, message: msg.styleGone };
       }
       finalStyleName = matched.name;
       finalPrice = Number(matched.price) || 0;
     } else if (styleList.length > 0) {
-      return { success: false, message: '请选择要画的妆造' };
+      return { success: false, message: msg.styleRequired };
     }
 
     // 原子占用：条件更新（单文档更新本身是原子的），避免并发重复预约
@@ -277,7 +349,7 @@ exports.main = async (event, context) => {
     }).update({ data: { [`${slot}.booked`]: true, [`${slot}.done`]: false } });
 
     if (claim.stats.updated !== 1) {
-      return { success: false, message: `该时段（${SLOT_NAMES[slot]}）刚被预约，请刷新后重试` };
+      return { success: false, message: msg.justBooked(SLOT_NAMES[slot]) };
     }
 
     let createRes;
@@ -337,10 +409,10 @@ exports.main = async (event, context) => {
     return {
       success: true,
       bookingId: createRes._id,
-      message: '预约提交成功，等待化妆师确认'
+      message: msg.ok
     };
   } catch (err) {
     console.error('createBooking error:', err);
-    return { success: false, message: '服务器错误：' + err.message };
+    return { success: false, message: msg.serverError(err.message) };
   }
 };

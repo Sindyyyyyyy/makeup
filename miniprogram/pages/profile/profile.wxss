@@ -13,12 +13,40 @@
   padding: 32rpx 24rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
 }
+/* 卡片头：左边标题，右边中/EN 切换 */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
 .card-title {
   font-size: 30rpx;
   font-weight: 600;
   color: #C95B7C;
-  margin-bottom: 24rpx;
   letter-spacing: 2rpx;
+}
+
+/* 语言切换：一个小药丸，选中的那一段铺粉色 */
+.lang-switch {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: #FFF5F7;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 999rpx;
+  overflow: hidden;
+}
+.lang-btn {
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #B89C8A;
+  padding: 2rpx 18rpx;
+}
+.lang-btn.on {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF;
+  font-weight: 600;
 }
 
 .profile-row {

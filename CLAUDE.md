@@ -105,6 +105,29 @@ Client-only enforcement would be worthless here, so `createBooking` re-checks se
 
 `pages/index` renders the component in two modes via `data.infoMode`: `confirm` (before submitting a booking — complete + photo required, submitText 确认并预约, and saving continues into `createBooking`) and `view` (the 详细信息 button on each booking card — always open, never blocked on completeness, saves only). `openInfoDetail` is what switches to `view`; `submitBooking` switches to `confirm`. One component instance, mode chosen by the bound props.
 
+### 中英文界面切换 (utils/i18n.js)
+
+顾客端界面可在**个人中心「我的资料」卡片右上角**用 中/EN 开关切换，给外国顾客用。**只翻顾客端**（`pages/index`、`pages/profile`、`components/infoForm`）；化妆师后台（adminLogin / adminSlots / adminStyles / adminCosmetics / adminPanel / scheduleGrid）保持中文。开关只放在个人中心，是因为语言是**每个顾客自己的**偏好，不能让化妆师替所有顾客设定。
+
+四条不变量，改动前务必读完：
+
+1. **WXML 不能调用 JS 函数。** 所有文案必须先进 `data` 才能渲染：页面/组件把整份字典放进 `data.L`，模板写 `{{L.index.someKey}}`。往 WXML 里加中文常量等于把这一屏钉死在中文。
+2. **存进数据库的枚举值本身就是中文**（性别 男/女、肤质 干性/油性/…、过敏 有/无），云函数按值做白名单校验 —— **改值等于改契约**。只翻「显示标签」：`label(kind, value)` 的映射表以**中文原值为 key**（key 就是数据库里的值，拼错不可能发生），中文侧是恒等映射。`infoForm` 的选项因此拆成「值 + 标签」两半：`item.value` 存库（`男`），`item.label` 显示（`Male`）。
+3. **语言切换不引入订阅/发布机制。** 语言只能在个人中心改，而个人中心是 tab 页 → 切回首页时 `onShow` 必然触发 → 首页重读一次 `getLang()` 重渲染即可。组件（info-form）通过 `lang` **属性**接收，父页面 setData 后属性变更即触发重渲染。**不要**把 `lang` 挂进 infoForm 现有的 `'visible, info, nickname'` observer —— 那个 observer 会重置整个 form，语言一变就把用户正在填的表清空了。语言单独一个 observer，只换文案、绝不碰 form。
+4. **只有 `setLang()` 落盘**（storage 的 `ui_lang`）。自动检测的结果**不写** —— 于是「用户没主动选过」时跟随微信系统语言，「主动选过」则以用户的选择为准。检测用 `wx.getAppBaseInfo().language`（要 2.24.7+，基础库低时函数不存在，必须先 `typeof` 判断），回退 `wx.getSystemInfoSync().language`；**非中英文一律回退中文**（客群是中文用户，日文/韩文微信不该看到英文界面）。
+
+`utils/i18n.js` 的 API：`detectLang()` / `getLang()` / `setLang(lang)` / `getDict(lang?)` / `t(key, vars)` / `tIn(lang, key, vars)` / `label(kind, value)` / `labelIn(lang, kind, value)` / `listJoin(arr)` / `listJoinIn(lang, arr)`。`t()` 的回退链是 `en[key]` → `zh[key]` → `console.warn` + 返回 key —— **绝不把原始 key 漏到界面上**；另有一个启动期自检遍历 zh 树、警告 en 里缺的词条（zh 是完整的基准）。
+
+`tIn`/`labelIn`/`listJoinIn` 是给**语言可能被钉死**的组件用的：后台两个宿主（adminPanel、scheduleGrid）给 info-form 传 `lang="zh"`，即便全局语言是英文，化妆师看到的顾客资料弹窗也必须是中文。这类地方**绝不能用全局的 `t()`/`label()`**。
+
+`syncTabBar` 必须拆成两个函数：`wx.setNavigationBarTitle` **只作用于当前显示的页面**，在个人中心调 `syncTabBar` 会把个人中心的标题刷成首页的「我的化妆预约」。所以 `syncTabBar(mode)`（含标题，只在 `pages/index` 调）和 `syncTabBarItems(mode)`（只改 tab 文案/图标，个人中心用）分开。
+
+`utils/slots.js` 和 `utils/profileInfo.js` **零改动** —— 数据里已有稳定标识符：时段名 `{{L.slot[slot.key]}}`（key ∈ morning/afternoon/evening）、状态 `{{L.status[item.status]}}`、星期几 `{{L.dow[item._idx]}}`（`_idx` 0..6 周一起）。`missingFields()` 返回的字段名**保持中文**（前后端各有一份，规则必须一致），只在显示处用 `label('field', m)` 翻。
+
+云函数侧按仓库约定**各抄一份** `MSG = {zh:{…}, en:{…}}` + `normalizeLang(l)`（未知一律 zh）。客户端每次调用带 `lang`；部署顺序无所谓：旧函数收到 `lang` 忽略 → 显示中文，新函数没收到 `lang` → 也显示中文，**两个方向的失败模式都是温和的**。已本地化的：`userProfile` / `createBooking` / `cancelBooking` / `getNoticeImage`。`listWeekSchedule` 没做 —— 它的 message 只进 `console.error`，界面弹的是客户端自己的 `t('common.loadFailed')`。
+
+> **已知限制：订阅消息仍然是中文。** 模板字段 `thing` 上限 20 字，`phrase` 是「限定五个中文汉字以内」——「Booking confirmed, please arrive on time」有 42 字，装不下；`phrase5` 更是纯中文字段。要支持英文必须在公众平台改模板字段类型，超出本次范围。
+
 ### Booking slot lifecycle
 
 Three fixed slots per day are defined **twice** and must be kept in sync manually: `miniprogram/utils/slots.js` (`SLOT_DEFS` — the frontend source of truth) and the `SLOT_KEYS`/`SLOT_NAMES` constants at the top of each cloud function. Slot names are `'8-11点'`, `'14-17点'`, `'18-21点'`.

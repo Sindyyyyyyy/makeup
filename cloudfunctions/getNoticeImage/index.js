@@ -7,15 +7,28 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 // 换成带签名的 https 临时链接下发，顾客拿到后 <image show-menu-by-longpress> 才能保存到相册。
 // 直接把 cloud:// fileID 丢给顾客的 <image> 会因 ACL 校验而一片空白（同素颜照那个坑）。
 // 注意：本地包内的图片长按不会弹出保存菜单，所以必须走临时链接这条路。
-const NOTICE_FILE_ID = 'cloud://cloud1-d1g82tuwue6aeadb2.636c-cloud1-d1g82tuwue6aeadb2-1502005871/notice.jpg';
+//
+// 按语言分桶：中英文是两张不同的图，英文版还没上传时留空，回退到中文图。
+const NOTICE_FILE_IDS = {
+  zh: 'cloud://cloud1-d1g82tuwue6aeadb2.636c-cloud1-d1g82tuwue6aeadb2-1502005871/notice.jpg',
+  en: '',
+};
 
-exports.main = async () => {
-  if (!NOTICE_FILE_ID || NOTICE_FILE_ID.indexOf('cloud://') !== 0) {
+// 客户端传的 lang 不认识就当中文。老版本客户端不传这个字段，老版本云函数也不认识它，
+// 两个方向的失败模式都是「显示中文图」。
+function normalizeLang(l) {
+  return l === 'en' ? 'en' : 'zh';
+}
+
+exports.main = async (event) => {
+  const lang = normalizeLang(event && event.lang);
+  const fileId = NOTICE_FILE_IDS[lang] || NOTICE_FILE_IDS.zh;
+  if (!fileId || fileId.indexOf('cloud://') !== 0) {
     return { success: false, message: '注意事项图片未配置' };
   }
 
   try {
-    const res = await cloud.getTempFileURL({ fileList: [NOTICE_FILE_ID] });
+    const res = await cloud.getTempFileURL({ fileList: [fileId] });
     const f = (res.fileList || [])[0];
     if (!f || f.status !== 0 || !f.tempFileURL) {
       console.error('getTempFileURL failed:', res);

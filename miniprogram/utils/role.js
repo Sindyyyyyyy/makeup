@@ -9,25 +9,46 @@
 // 视图模式（admin_mode）与登录态分开存：切到顾客端只是换个视图，令牌仍然有效，
 // 化妆师来回切不用重新输管理密码。
 
+const { t } = require('./i18n.js');
+
 const TOKEN_KEY = 'admin_token';
 const MODE_KEY = 'admin_mode'; // 'admin' | 'customer'
 
-// 首页 tab 在两种模式下长得不一样：图标和文案都要换
+// 首页 tab 在两种模式下长得不一样：图标和文案都要换。
+// 图标是画出来的图片，跟语言无关；文案只有顾客端这一侧跟随语言
+// （化妆师后台是化妆师自己用的工具，本次不做翻译，保持中文）。
 const TAB_STYLE = {
   customer: {
-    text: '首页',
     // 路径写法与 app.json 的 tabBar 保持一致（相对小程序根目录）
     iconPath: 'images/tabbar/home.png',
     selectedIconPath: 'images/tabbar/home-active.png',
-    navTitle: '我的化妆预约',
   },
   admin: {
-    text: '化妆师后台',
     iconPath: 'images/tabbar/manage.png',
     selectedIconPath: 'images/tabbar/manage-active.png',
-    navTitle: '化妆师后台',
   },
 };
+
+// tab 页白名单。wx.setTabBarItem 只能在 tab 页调用（否则报 not TabBar page），
+// 所以凡是会改 tab 文案的函数都先过这道断言，免得以后被挪到非 tab 页时炸掉。
+const TAB_PAGES = ['pages/index/index', 'pages/profile/profile'];
+
+function isTabPage() {
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : null;
+  if (!pages || !pages.length) return false;
+  const cur = pages[pages.length - 1];
+  return !!cur && TAB_PAGES.indexOf(cur.route) >= 0;
+}
+
+// 首页 tab 的文案。顾客端跟随语言，化妆师后台固定中文。
+function tabText(mode) {
+  return mode === 'admin' ? '化妆师后台' : t('tab.index');
+}
+
+// 首页 tab 的导航栏标题。同样：顾客端跟随语言，后台固定中文。
+function navTitle(mode) {
+  return mode === 'admin' ? '化妆师后台' : t('nav.index');
+}
 
 // 是不是已登录的化妆师。只看本地有没有令牌——不解析 exp 判断有效期：
 // 服务端返回 UNAUTHORIZED 才是权威答案，客户端解码等于复制一份密码学逻辑
@@ -93,16 +114,26 @@ async function refreshAdminToken() {
   }
 }
 
-// 首页 tab 的文案/图标/导航栏标题跟随模式切换。只能在 tab 页调用。
-function syncTabBar(mode) {
-  const style = TAB_STYLE[mode === 'admin' ? 'admin' : 'customer'];
+// 两个 tab 的文案与图标。**不改导航栏标题** ——
+// wx.setNavigationBarTitle 只作用于当前显示的页面，在个人中心调 syncTabBar
+// 会把个人中心的标题刷成首页的「我的化妆预约」。语言切换要用的是这个。
+function syncTabBarItems(mode) {
+  if (!isTabPage()) return;
+  const m = mode === 'admin' ? 'admin' : 'customer';
+  const style = TAB_STYLE[m];
   wx.setTabBarItem({
     index: 0,
-    text: style.text,
+    text: tabText(m),
     iconPath: style.iconPath,
     selectedIconPath: style.selectedIconPath,
   });
-  wx.setNavigationBarTitle({ title: style.navTitle });
+  wx.setTabBarItem({ index: 1, text: t('tab.profile') });
+}
+
+// 首页 tab 的文案/图标/导航栏标题跟随模式切换。只能在 tab 页调用。
+function syncTabBar(mode) {
+  syncTabBarItems(mode);
+  wx.setNavigationBarTitle({ title: navTitle(mode) });
 }
 
 module.exports = {
@@ -117,4 +148,5 @@ module.exports = {
   setAdminSession,
   refreshAdminToken,
   syncTabBar,
+  syncTabBarItems,
 };

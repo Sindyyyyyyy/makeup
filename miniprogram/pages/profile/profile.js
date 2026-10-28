@@ -1,6 +1,7 @@
-// pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 双端切换入口）
+// pages/profile/profile.js - 个人中心（微信头像昵称 + 个人信息表 + 双端切换入口 + 语言切换）
 const { emptyForm, toForm, missingFields, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
-const { currentMode, setMode } = require('../../utils/role.js');
+const { currentMode, setMode, syncTabBarItems } = require('../../utils/role.js');
+const { getLang, setLang, getDict, t } = require('../../utils/i18n.js');
 const cosmeticsCache = require('../../utils/cosmeticsCache.js');
 
 const CACHE_KEY = 'user_profile';
@@ -35,9 +36,14 @@ Page({
     // 化妆品管理的到期角标（仅化妆师可见）。见 refreshCosmeticBadge
     cosmeticState: '去管理',
     cosmeticStateColor: '',
+    // 界面语言。'zh' | 'en'，以及整份文案字典 L（模板里写 {{L.profile.xxx}}）
+    lang: '',
+    L: {},
   },
 
   onLoad() {
+    this.applyLang();
+    this.syncChrome();
     // 本地缓存先渲染，云端数据随后回填
     const cached = wx.getStorageSync(CACHE_KEY);
     if (cached && typeof cached === 'object') {
@@ -60,7 +66,38 @@ Page({
   onShow() {
     // 可能在首页切了端或登录/退出，回来时入口文案要跟着变
     this.setData({ isAdmin: currentMode() === 'admin' });
+    // 语言也可能在别处改过（目前只有本页面能改，但读一次更保险）。
+    // 切 tab 回来时 onShow 必然触发 → 首页那边也是同样的机制刷新。
+    this.applyLang();
+    this.syncChrome();
     this.refreshCosmeticBadge();
+  },
+
+  // ============ 语言切换 ============
+  // 语言存在本地（storage 的 ui_lang）。没手动选过时跟随微信系统语言，
+  // 手动选过之后就以用户的选择为准，不再被系统语言覆盖。
+  applyLang() {
+    const lang = getLang();
+    if (lang === this.data.lang) return;
+    this.setData({ lang, L: getDict(lang) });
+  },
+
+  // 导航栏标题和 tab 文案跟着语言走。
+  // ⚠️ 这里只能用 syncTabBarItems（不改导航栏标题），不能用 syncTabBar ——
+  // 后者会 setNavigationBarTitle，而那只作用于当前显示的页面，
+  // 在个人中心调它会把标题刷成首页的「我的化妆预约」。
+  syncChrome() {
+    wx.setNavigationBarTitle({ title: t('nav.profile') });
+    syncTabBarItems(currentMode());
+  },
+
+  onLangTap(e) {
+    const lang = e.currentTarget.dataset.lang;
+    if (lang !== 'zh' && lang !== 'en') return;
+    if (lang === this.data.lang) return;
+    setLang(lang);
+    this.applyLang();
+    this.syncChrome();
   },
 
   // 化妆品管理的到期角标。**只读 storage 缓存，绝不为这个数字发云函数调用**——
@@ -90,7 +127,7 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
-        data: { action: 'get' },
+        data: { action: 'get', lang: this.data.lang },
       });
       const r = res.result;
       if (r && r.code === 'NO_OPENID') {
@@ -132,7 +169,7 @@ Page({
       this.markDirty();
     } catch (err) {
       console.error('头像上传失败', err);
-      wx.showToast({ title: '头像上传失败', icon: 'none' });
+      wx.showToast({ title: t('profile.avatarUploadFailed'), icon: 'none' });
     } finally {
       this.setData({ uploading: false });
     }
@@ -152,19 +189,19 @@ Page({
   async onSave() {
     const nickname = (this.data.nickname || '').trim();
     if (!this.data.avatarUrl && !nickname) {
-      wx.showToast({ title: '请先设置头像或昵称', icon: 'none' });
+      wx.showToast({ title: t('profile.needAvatarOrNickname'), icon: 'none' });
       return;
     }
     this.setData({ saving: true });
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
-        data: { action: 'save', nickname, avatarUrl: this.data.avatarUrl },
+        data: { action: 'save', nickname, avatarUrl: this.data.avatarUrl, lang: this.data.lang },
       });
       const r = res.result;
       if (!r || !r.success) {
         console.error('保存个人资料失败：', r);
-        wx.showToast({ title: (r && r.message) || '保存失败', icon: 'none' });
+        wx.showToast({ title: (r && r.message) || t('common.saveFailed'), icon: 'none' });
         return;
       }
       const saved = { avatarUrl: r.profile.avatarUrl || '', nickname: r.profile.nickname || '' };
@@ -173,10 +210,10 @@ Page({
       wx.setStorageSync(CACHE_KEY, saved);
       // 昵称就是 users.nickname，首页读的是同一个字段，清掉时间戳强制回云端校准
       clearFetched();
-      wx.showToast({ title: '已保存', icon: 'success' });
+      wx.showToast({ title: t('common.saved'), icon: 'success' });
     } catch (err) {
       console.error('保存个人资料异常：', err);
-      wx.showToast({ title: (err && err.message) || '保存失败，请重试', icon: 'none' });
+      wx.showToast({ title: (err && err.message) || t('common.saveFailedRetry'), icon: 'none' });
     } finally {
       this.setData({ saving: false });
     }
@@ -196,7 +233,7 @@ Page({
     const form = e.detail.info || {};
     if (form.hasAllergy === '有' && !(form.allergyNote || '').trim()) {
       // 过敏只答“有”没说明对化妆师没用，提示但不阻断
-      wx.showToast({ title: '建议写明过敏的具体产品', icon: 'none' });
+      wx.showToast({ title: t('profile.allergyNoteHint'), icon: 'none' });
     }
     this.setData({ savingInfo: true });
     const formCmp = this.selectComponent('#infoForm');
@@ -204,12 +241,12 @@ Page({
     try {
       const res = await wx.cloud.callFunction({
         name: 'userProfile',
-        data: { action: 'saveInfo', nickname: this.data.nickname, info: form },
+        data: { action: 'saveInfo', nickname: this.data.nickname, info: form, lang: this.data.lang },
       });
       const r = res.result;
       if (!r || !r.success) {
         console.error('保存个人信息失败：', r);
-        wx.showToast({ title: (r && r.message) || '保存失败', icon: 'none' });
+        wx.showToast({ title: (r && r.message) || t('common.saveFailed'), icon: 'none' });
         return;
       }
       const saved = toForm(r.info, this.data.nickname);
@@ -218,10 +255,10 @@ Page({
       // 资料刚变过：清掉共享时间戳，首页下次读资料必须回云端
       clearFetched();
       this.setData({ showInfo: false, info: saved, hasInfo: hasContent(saved) });
-      wx.showToast({ title: '已保存', icon: 'success' });
+      wx.showToast({ title: t('common.saved'), icon: 'success' });
     } catch (err) {
       console.error('保存个人信息异常：', err);
-      wx.showToast({ title: (err && err.message) || '保存失败，请重试', icon: 'none' });
+      wx.showToast({ title: (err && err.message) || t('common.saveFailedRetry'), icon: 'none' });
     } finally {
       if (formCmp) formCmp.setSubmitting(false);
       this.setData({ savingInfo: false });

@@ -31,6 +31,35 @@ const SLOT_NAMES = { morning: '09:30-11:30', afternoon: '14:00-17:00', evening: 
 
 const PAGE_HOME = 'pages/index/index'; // 无前导斜杠，须与 app.json 注册项逐字一致
 
+// ============ 界面语言 ============
+// 客户端每次调用都带 lang。不认识的一律中文 —— 老版本客户端不带这个字段，
+// 老版本云函数也不认识它，两个方向的失败模式都是「显示中文」，不会出错。
+function normalizeLang(l) {
+  return l === 'en' ? 'en' : 'zh';
+}
+
+// 报错文案（客户端会原样弹给顾客）。按仓库约定这里不共享模块，各抄一份。
+const MSG = {
+  zh: {
+    missingId: '缺少预约ID',
+    notFound: '预约不存在',
+    notOwner: '无权取消该预约',
+    notCancelable: '该预约当前状态不可取消',
+    statusChanged: '操作失败，预约状态已变化，请刷新后重试',
+    ok: '预约已取消',
+    serverError: (e) => '服务器错误：' + e,
+  },
+  en: {
+    missingId: 'Missing booking ID',
+    notFound: 'Booking not found',
+    notOwner: 'You cannot cancel this booking',
+    notCancelable: 'This booking can no longer be cancelled',
+    statusChanged: 'Action failed — the booking status changed, please refresh and retry',
+    ok: 'Booking cancelled',
+    serverError: (e) => 'Server error: ' + e,
+  },
+};
+
 // thing 类型上限 20 字，超了整条消息发不出去（47003）
 function clip(s, n) {
   return String(s == null ? '' : s).slice(0, n);
@@ -113,11 +142,13 @@ async function findArtistOpenids() {
 
 exports.main = async (event, context) => {
   const { bookingId } = event;
+  const lang = normalizeLang(event && event.lang);
+  const msg = MSG[lang];
   // openid 只能取自服务端，绝不接受客户端传入，否则可被伪造
   const openid = currentOpenid(context);
 
   if (!bookingId) {
-    return { success: false, message: '缺少预约ID' };
+    return { success: false, message: msg.missingId };
   }
 
   try {
@@ -125,11 +156,11 @@ exports.main = async (event, context) => {
     try {
       bookingRes = await db.collection('bookings').doc(bookingId).get();
     } catch (e) {
-      return { success: false, message: '预约不存在' };
+      return { success: false, message: msg.notFound };
     }
     const booking = bookingRes.data;
     if (!booking) {
-      return { success: false, message: '预约不存在' };
+      return { success: false, message: msg.notFound };
     }
 
     // 归属校验：任何人拿到 bookingId 都不能取消他人预约
@@ -144,11 +175,11 @@ exports.main = async (event, context) => {
       };
     }
     if (booking._openid !== openid) {
-      return { success: false, message: '无权取消该预约' };
+      return { success: false, message: msg.notOwner };
     }
 
     if (!['pending', 'confirmed'].includes(booking.status)) {
-      return { success: false, message: '该预约当前状态不可取消' };
+      return { success: false, message: msg.notCancelable };
     }
 
     const updateRes = await db.collection('bookings').where({
@@ -161,7 +192,7 @@ exports.main = async (event, context) => {
       }
     });
     if (updateRes.stats.updated === 0) {
-      return { success: false, message: '操作失败，预约状态已变化，请刷新后重试' };
+      return { success: false, message: msg.statusChanged };
     }
 
     // 释放时段（只针对该日期的那一条记录）
@@ -200,9 +231,9 @@ exports.main = async (event, context) => {
     }
 
     // 返回值保持原样：不加任何字段把化妆师的 openid 带回客户端
-    return { success: true, message: '预约已取消' };
+    return { success: true, message: msg.ok };
   } catch (err) {
     console.error('cancelBooking error:', err);
-    return { success: false, message: '服务器错误：' + err.message };
+    return { success: false, message: msg.serverError(err.message) };
   }
 };
