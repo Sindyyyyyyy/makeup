@@ -5,7 +5,7 @@ const {
   SLOT_DEFS, SLOT_NAME_MAP, SLOT_ORDER, computeWeekDates, isSlotExpired,
   buildSlotRows, normalizeSlotTimes, resolveSlotTime, isCustomTime, formatRange,
 } = require('../../utils/slots.js');
-const { emptyForm, toForm, missingFields, sameForm, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
+const { emptyForm, toForm, missingFields, sameForm, sameList, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
 const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
 const { getLang, getDict, t, listJoin } = require('../../utils/i18n.js');
@@ -44,6 +44,12 @@ Page({
     showInfo: false,
     infoMode: '',
     info: emptyForm(),
+    // 弹窗的副标题（提示语）。view 模式要写清「改的是哪一单」——
+    // 「想画的妆容照片」属于预约而不是个人资料，不说清楚她会以为改的是通用资料。
+    infoHint: '',
+    // 「详细信息」模式下正在改的那一单：_id 用来回写，参考图用来当编辑起点
+    detailBookingId: '',
+    detailStyleRefs: [],
     submitting: false,
     // 预约成功后的「注意事项」图。noticeImg 默认指向包内压缩图兜底，
     // 云函数拿到 https 临时链接后会替换成可长按保存的那份
@@ -386,13 +392,34 @@ Page({
       // 显示时翻译成当前语言的标签。分隔符也按语言走：中文「、」英文「, 」。
       wx.showToast({ title: t('common.missing') + listJoin(missing.slice(0, 2)), icon: 'none' });
     }
-    this.setData({ showInfo: true, infoMode: 'confirm' });
+    // 「想画的妆容照片」属于这一次预约，每次都要重传 → 初始值给空数组。
+    // 种子先给、弹窗后开：两批 setData，组件「刚打开时重置成种子」才拿得到新值。
+    this.setData({
+      infoMode: 'confirm',
+      infoHint: t('index.confirmHint'),
+      detailBookingId: '',
+      detailStyleRefs: [],
+    });
+    this.setData({ showInfo: true });
   },
 
-  // 预约卡片上的“详细信息”：随时查看/更新最新个人信息，不涉及下单
-  async openInfoDetail() {
+  // 预约卡片上的“详细信息”：随时查看/更新最新个人信息，不涉及下单。
+  // 「想画的妆容照片」属于**这一单**，所以要知道是哪一单（data-id）。
+  async openInfoDetail(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset.id) || '';
+    const booking = this.data.myBookings.find((b) => b._id === id) || null;
     await this.loadProfile();
-    this.setData({ showInfo: true, infoMode: 'view' });
+    const refs = booking && Array.isArray(booking.styleRefPhotos) ? booking.styleRefPhotos.slice() : [];
+    this.setData({
+      infoMode: 'view',
+      // 写清是哪一单：参考图挂在预约上，不说清楚她会以为改的是个人资料
+      infoHint: booking
+        ? t('index.detailHintBooking', { date: booking.date, slot: booking.slotLabel })
+        : t('index.detailHint'),
+      detailBookingId: booking ? booking._id : '',
+      detailStyleRefs: refs,
+    });
+    this.setData({ showInfo: true });
   },
 
   closeInfo() {
@@ -401,6 +428,10 @@ Page({
 
   // 第二步：个人信息确认（并补全）通过后才真正下单
   async onSaveInfo(e) {
+    // 想画的妆容照片属于**这一次预约**，不存个人资料，单独传给 createBooking。
+    // 必须在第一个 await 之前取出来：组件里的数组可能在 await 期间被重置。
+    const styleRefPhotos = (e.detail.styleRefPhotos || []).slice();
+
     // 下单前最后一个手势在这里：先把「预约结果通知」的订阅额度拿到手，
     // 保证 createBooking 之后化妆师确认/拒绝时能发出去。
     //
@@ -428,7 +459,7 @@ Page({
     // PROFILE_INCOMPLETE，页面会重新拉一次云端并把缺项回显出来——不会漏。
     if (isConfirm && sameForm(form, wx.getStorageSync('user_info'))) {
       this.setData({ showInfo: false });
-      await this.doCreateBooking();
+      await this.doCreateBooking(styleRefPhotos);
       return;
     }
 
@@ -450,13 +481,39 @@ Page({
       wx.setStorageSync('user_info', info);
       // 资料刚变过，下次读资料必须回云端
       clearFetched();
-      this.setData({ showInfo: false });
       // 预约前确认才接着下单；单看详情只保存
       if (isConfirm) {
-        await this.doCreateBooking();
-      } else {
-        wx.showToast({ title: t('common.updated'), icon: 'success' });
+        this.setData({ showInfo: false });
+        await this.doCreateBooking(styleRefPhotos);
+        return;
       }
+      // 单看详情：这一单的参考图也要落库。图没动就别发请求——
+      // 云函数调用次数是稀缺的资源，不该为「没改」付费。
+      if (this.data.detailBookingId && !sameList(styleRefPhotos, this.data.detailStyleRefs)) {
+        const upRes = await wx.cloud.callFunction({
+          name: 'updateBookingPhotos',
+          data: {
+            bookingId: this.data.detailBookingId,
+            styleRefPhotos,
+            lang: this.data.lang,
+          },
+        });
+        if (!upRes.result || !upRes.result.success) {
+          console.error('保存参考图失败：', upRes.result);
+          wx.showToast({ title: (upRes.result && upRes.result.message) || t('common.saveFailed'), icon: 'none' });
+          return;   // 弹窗不关，她可以直接重试
+        }
+        // 就地打补丁：不重拉整张预约列表
+        const photos = upRes.result.styleRefPhotos || styleRefPhotos;
+        this.setData({
+          detailStyleRefs: photos,
+          myBookings: this.data.myBookings.map((b) => (
+            b._id === this.data.detailBookingId ? { ...b, styleRefPhotos: photos } : b
+          )),
+        });
+      }
+      this.setData({ showInfo: false });
+      wx.showToast({ title: t('common.updated'), icon: 'success' });
     } catch (err) {
       console.error('保存个人信息异常：', err);
       wx.showToast({ title: (err && err.message) || t('common.saveFailedRetry'), icon: 'none' });
@@ -466,7 +523,7 @@ Page({
     }
   },
 
-  async doCreateBooking() {
+  async doCreateBooking(styleRefPhotos = []) {
     const { nickname, modalDate, modalSlot, modalStyles, selectedStyle } = this.data;
     const style = selectedStyle >= 0 ? modalStyles[selectedStyle] : null;
 
@@ -479,6 +536,8 @@ Page({
           slot: modalSlot,
           name: (nickname || '').trim(),
           styleName: style ? style.name : '',
+          // 想画的妆容照片：跟着这一单存，不进个人资料
+          styleRefPhotos: styleRefPhotos || [],
           lang: this.data.lang,
         },
       });

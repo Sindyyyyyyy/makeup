@@ -146,6 +146,7 @@
   visible="{{showUserProfile}}"
   info="{{userInfo}}"
   nickname="{{userNickname}}"
+  style-ref-urls="{{userStyleRefUrls}}"
   title="顾客信息"
   hint="{{userInfoHint}}"
   readonly="{{true}}"

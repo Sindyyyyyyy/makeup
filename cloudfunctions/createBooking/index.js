@@ -59,6 +59,22 @@ function toMinutes(hhmm) {
 
 const MAX = { name: 20, skinType: 200, remark: 500, styleName: 20 };
 
+// 想画的妆容照片：属于**单次预约**，最多 3 张，只写进 bookings，不进 users.info。
+// 顾客每次想画的妆容大概率不同，所以每下一单都要重新传。
+// 与 miniprogram/utils/profileInfo.js 的 MAX_STYLE_REF_PHOTOS 各抄一份
+//（两个目录不共享文件系统，只能人工同步）。
+const MAX_STYLE_REF_PHOTOS = 3;
+
+// 只保留云存储 fileID，最多 MAX_STYLE_REF_PHOTOS 张。
+// 口径与 userProfile 的 normalizePhotos 一致：不合法的静默丢弃、不报错。
+function normalizeStyleRefPhotos(photos) {
+  if (!Array.isArray(photos)) return [];
+  return photos
+    .map((p) => String(p || '').trim())
+    .filter((p) => p.indexOf('cloud://') === 0)
+    .slice(0, MAX_STYLE_REF_PHOTOS);
+}
+
 // ============ 界面语言 ============
 // 客户端每次调用都带 lang。不认识的一律中文 —— 老版本客户端不带这个字段，
 // 老版本云函数也不认识它，两个方向的失败模式都是「显示中文」，不会出错。
@@ -278,7 +294,7 @@ function currentOpenid(context) {
 }
 
 exports.main = async (event, context) => {
-  const { date, slot, name, skinType, remark, styleName } = event;
+  const { date, slot, name, skinType, remark, styleName, styleRefPhotos } = event;
   const lang = normalizeLang(event && event.lang);
   const msg = MSG[lang];
   const openid = currentOpenid(context);
@@ -335,6 +351,8 @@ exports.main = async (event, context) => {
   const cleanSkin = String(skinType || '').trim();
   const cleanRemark = String(remark || '').trim();
   const cleanStyleName = String(styleName || '').trim();
+  // 想画的妆容照片（选填）：跟着这一单存，不写进个人资料
+  const cleanStyleRefPhotos = normalizeStyleRefPhotos(styleRefPhotos);
   if (cleanStyleName.length > MAX.styleName) return { success: false, message: msg.styleTooLong(MAX.styleName) };
   if (!cleanName) return { success: false, message: msg.nameRequired };
   if (cleanName.length > MAX.name) return { success: false, message: msg.nameTooLong(MAX.name) };
@@ -418,6 +436,8 @@ exports.main = async (event, context) => {
           remark: cleanRemark,
           styleName: finalStyleName,
           stylePrice: finalPrice,
+          // 想画的妆容照片（fileID 数组，最多 3 张，选填）
+          styleRefPhotos: cleanStyleRefPhotos,
           status: 'pending',
           createTime: db.serverDate(),
           updateTime: db.serverDate()

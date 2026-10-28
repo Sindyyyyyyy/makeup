@@ -114,6 +114,8 @@ const DICT = {
       detailTitle: '详细信息',
       confirmHint: '请确认信息已更新至最新，补全后才能提交预约',
       detailHint: '资料如有变化请及时更新',
+      // 「详细信息」里改的参考图属于**那一单**，所以副标题要写清是哪一单
+      detailHintBooking: '本次预约：{date} {slot}。资料如有变化请及时更新。',
       confirmSubmit: '确认并预约',
       saveSubmit: '保存',
       bookingSuccess: '预约成功',
@@ -169,6 +171,8 @@ const DICT = {
       maxPhotos: '最多 {n} 张',
       uploadFailed: '照片上传失败',
       profileIncomplete: '请先补全个人信息',
+      styleRefs: '想画的妆容照片',
+      styleRefsHint: '选填，告诉化妆师你想要的效果',
     },
   },
 
@@ -263,6 +267,8 @@ const DICT = {
       detailTitle: 'Details',
       confirmHint: 'Please make sure your details are up to date — all fields are needed to book',
       detailHint: 'Please update your details if anything has changed',
+      // 「详细信息」里改的参考图属于**那一单**，所以副标题要写清是哪一单
+      detailHintBooking: 'This booking: {date} {slot}. Please update your details if anything has changed.',
       confirmSubmit: 'Confirm & Book',
       saveSubmit: 'Save',
       bookingSuccess: 'Booked!',
@@ -318,6 +324,8 @@ const DICT = {
       maxPhotos: 'Max {n} photos',
       uploadFailed: 'Photo upload failed',
       profileIncomplete: 'Complete your profile first',
+      styleRefs: 'Makeup Inspiration Photos',
+      styleRefsHint: 'Optional — show the artist the look you want',
     },
   },
 };

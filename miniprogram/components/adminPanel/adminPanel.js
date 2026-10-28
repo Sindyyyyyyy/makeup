@@ -52,6 +52,8 @@ Component({
     userInfo: null,
     userNickname: '',
     userInfoHint: '',
+    // 「想画的妆容照片」的 https 临时链接（存在这一单上，不在顾客资料上）
+    userStyleRefUrls: [],
     // 订阅消息（一次性）的 UI 提示。**不是服务端状态**——服务端不查它，
     // 能不能发出去取决于微信侧的额度，这里只是「她点过没有」的展示。
     notifyEnabled: false,
@@ -276,9 +278,11 @@ Component({
     },
 
     // 查看顾客的个人信息（只读）。资料以云端为准，每次点开都重新拉
+    // 传预约 _id 而不是 openid：「想画的妆容照片」存在这一单上，
+    // 服务端从预约文档里取 openid，比客户端传的可靠。
     async openUserProfile(e) {
-      const openid = e.currentTarget.dataset.openid;
-      if (!openid) return;
+      const bookingId = e.currentTarget.dataset.bookingId;
+      if (!bookingId) return;
       let token = getToken();
       if (!token) {
         // 同 loadBookings：令牌没了先补一张，而不是直接摆一张失效卡片
@@ -290,7 +294,7 @@ Component({
       try {
         const res = await wx.cloud.callFunction({
           name: 'adminGetUserProfile',
-          data: { token, openid },
+          data: { token, bookingId },
         });
         const r = res.result;
         if (!r || !r.success) {
@@ -306,6 +310,8 @@ Component({
           showUserProfile: true,
           userInfo: info,
           userNickname: (r.profile && r.profile.nickname) || '',
+          // 参考图的 https 临时链接（空数组 = 顾客这次没传）
+          userStyleRefUrls: r.styleRefUrls || [],
           userInfoHint: r.exists
             ? '顾客自己填写，以这里显示的为准'
             : '该顾客还没有填写个人信息',
@@ -319,7 +325,8 @@ Component({
     },
 
     closeUserProfile() {
-      this.setData({ showUserProfile: false });
+      // 参考图也一起清掉：不然下次打开别人的资料时会残留上一次的图
+      this.setData({ showUserProfile: false, userStyleRefUrls: [] });
     },
 
     // 订阅消息：点一次 +1 条「新预约提醒」额度（两个模板在同一个弹窗里一次授权，

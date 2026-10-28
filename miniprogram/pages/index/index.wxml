@@ -118,7 +118,7 @@
       <view wx:if="{{item.styleName}}" class="bd-info">{{L.index.labelStyle}}{{item.styleName}} · ¥{{item.stylePrice}}</view>
       <view wx:if="{{item.remark}}" class="bd-note">{{L.index.labelRemark}}{{item.remark}}</view>
       <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
-        <button class="btn-detail" size="mini" bindtap="openInfoDetail">{{L.index.detail}}</button>
+        <button class="btn-detail" size="mini" bindtap="openInfoDetail" data-id="{{item._id}}">{{L.index.detail}}</button>
         <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">{{L.index.cancelBooking}}</button>
       </view>
     </view>
@@ -162,16 +162,20 @@
 
 <!-- 个人信息表（与个人中心共用 info-form 组件）
      infoMode=confirm：提交预约前的确认，必须填完整才能继续下单
-     infoMode=view：预约卡片上的“详细信息”，随时查看/更新，不卡完整性 -->
+     infoMode=view：预约卡片上的“详细信息”，随时查看/更新，不卡完整性。
+       这时弹窗里改的「想画的妆容照片」属于那一单（detailBookingId），
+       不是个人资料 —— 参考图每次预约都要重新传，所以不存进 users.info。 -->
 <info-form
   id="infoForm"
   visible="{{showInfo}}"
   info="{{info}}"
   nickname="{{nickname}}"
   title="{{infoMode === 'confirm' ? L.index.confirmTitle : L.index.detailTitle}}"
-  hint="{{infoMode === 'confirm' ? L.index.confirmHint : L.index.detailHint}}"
+  hint="{{infoHint}}"
   require-complete="{{infoMode === 'confirm'}}"
   require-photo="{{infoMode === 'confirm'}}"
+  show-style-refs="{{infoMode === 'confirm' || infoMode === 'view'}}"
+  style-ref-seed="{{detailStyleRefs}}"
   submit-text="{{infoMode === 'confirm' ? L.index.confirmSubmit : L.index.saveSubmit}}"
   lang="{{lang}}"
   bind:close="closeInfo"

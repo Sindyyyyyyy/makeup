@@ -88,6 +88,8 @@ Component({
     userInfo: null,
     userNickname: '',
     userInfoHint: '',
+    // 「想画的妆容照片」的 https 临时链接（存在这一单上，不在顾客资料上）
+    userStyleRefUrls: [],
   },
 
   lifetimes: {
@@ -317,6 +319,8 @@ Component({
           showUserProfile: true,
           userInfo: r.exists ? r.info : null,
           userNickname: (r.profile && r.profile.nickname) || '',
+          // 参考图的 https 临时链接（空数组 = 顾客这次没传）
+          userStyleRefUrls: r.styleRefUrls || [],
           userInfoHint: r.exists ? '顾客自己填写，以这里显示的为准' : '该顾客还没有填写个人信息',
         });
       } catch (e) {
@@ -328,11 +332,12 @@ Component({
     },
 
     closeUserProfile() {
-      this.setData({ showUserProfile: false });
+      // 参考图也一起清掉：不然下次打开别人的资料时会残留上一次的图
+      this.setData({ showUserProfile: false, userStyleRefUrls: [] });
     },
 
     closeStyleModal() {
-      this.setData({ showStyleModal: false, showUserProfile: false, showTimeEdit: false });
+      this.setData({ showStyleModal: false, showUserProfile: false, showTimeEdit: false, userStyleRefUrls: [] });
     },
 
     noop() {},

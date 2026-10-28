@@ -54,6 +54,11 @@ function isOpenid(v) {
   return typeof v === 'string' && /^[A-Za-z0-9_-]{10,64}$/.test(v);
 }
 
+// 预约 _id 是云数据库自己生成的十六进制串，或我们自己指定的自定义串。
+function isBookingId(v) {
+  return typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+}
+
 const SLOT_KEYS = ['morning', 'afternoon', 'evening'];
 
 // 时段入口（date + slot）：时段管理页只知道「这天这个时段被预约了」，
@@ -70,6 +75,21 @@ async function findBooking(date, slot) {
   return (res.data || []).find(
     (b) => b.slot === slot && b.status !== 'rejected' && b.status !== 'cancelled'
   ) || null;
+}
+
+// 按预约 _id 取一条预约。
+// 「想画的妆容照片」存在**预约**上、不在顾客资料上（顾客每次想画的妆容不同，
+// 每单重新传，不存个人资料），所以要知道是哪一单才拿得到参考图。
+async function findBookingById(bookingId) {
+  try {
+    const res = await db.collection('bookings').doc(bookingId).get();
+    return res.data || null;
+  } catch (err) {
+    const text = [err.errMsg, err.message].filter(Boolean).join(' | ');
+    // 文档不存在：不是错误，当作「没有这条预约」
+    if (/-502003/.test(text) || /not exist/i.test(text)) return null;
+    throw err;
+  }
 }
 
 // 读顾客资料：两个入口共用，返回结构一字不变
@@ -115,14 +135,36 @@ exports.main = async (event) => {
 
   const date = event && event.date;
   const slot = event && event.slot;
+  const bookingId = event && event.bookingId;
 
   try {
+    // 入口一：按预约 _id 查（化妆师后台首页的预约卡片用）。
+    // openid 从**预约文档**里取——那是服务端自己写的数据，比客户端传的可靠。
+    // 「想画的妆容照片」也在这条预约上，一起换成临时链接返回。
+    if (isBookingId(bookingId)) {
+      const hit = await findBookingById(bookingId);
+      if (!hit) {
+        return { success: true, exists: false, booking: null, profile: null, info: null, styleRefUrls: [] };
+      }
+      const res = await readUserProfile(hit._openid);
+      return Object.assign({}, res, {
+        booking: {
+          name: hit.name || '',
+          styleName: hit.styleName || '',
+          status: hit.status || '',
+          date: hit.date || '',
+          slot: hit.slot || '',
+        },
+        styleRefUrls: await toTempUrls(hit.styleRefPhotos),
+      });
+    }
+
     // 入口二：按日期 + 时段找人（时段管理页用），openid 由服务端自己解析
     if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) && SLOT_KEYS.indexOf(slot) >= 0) {
       const hit = await findBooking(date, slot);
       if (!hit) {
         // 不是错误：可能只是历史脏数据（时段被占了但预约记录没了）
-        return { success: true, exists: false, booking: null, profile: null, info: null };
+        return { success: true, exists: false, booking: null, profile: null, info: null, styleRefUrls: [] };
       }
       const res = await readUserProfile(hit._openid);
       // 不回传 _openid：客户端拿到资料就够了，openid 是顾客身份，没必要外流
@@ -134,10 +176,12 @@ exports.main = async (event) => {
           date: hit.date || date,
           slot: hit.slot || slot,
         },
+        // 预约已经查出来了，顺手把参考图也换了，零额外数据库读取
+        styleRefUrls: await toTempUrls(hit.styleRefPhotos),
       });
     }
 
-    // 入口一：直接按 openid 查（化妆师后台首页的预约卡片用）
+    // 入口三：直接按 openid 查（没有指定是哪一单，就拿不到参考图）
     const openid = event && event.openid;
     if (!isOpenid(openid)) {
       return { success: false, message: '缺少或无效的用户标识' };

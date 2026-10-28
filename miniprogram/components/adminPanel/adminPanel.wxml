@@ -99,12 +99,12 @@
         <view class="bd-time">下单时间：{{item.createdAtText}}</view>
 
         <view wx:if="{{item.status === 'pending'}}" class="bd-actions">
-          <button class="btn-detail" size="mini" data-openid="{{item._openid}}" bindtap="openUserProfile">详细信息</button>
+          <button class="btn-detail" size="mini" data-booking-id="{{item._id}}" bindtap="openUserProfile">详细信息</button>
           <button class="btn-secondary" size="mini" data-id="{{item._id}}" data-action="reject" bindtap="doAction">拒绝</button>
           <button class="btn-primary" size="mini" data-id="{{item._id}}" data-action="confirm" bindtap="doAction">确认</button>
         </view>
         <view wx:if="{{item.status === 'confirmed'}}" class="bd-actions">
-          <button class="btn-detail" size="mini" data-openid="{{item._openid}}" bindtap="openUserProfile">详细信息</button>
+          <button class="btn-detail" size="mini" data-booking-id="{{item._id}}" bindtap="openUserProfile">详细信息</button>
           <button class="btn-primary" size="mini" data-id="{{item._id}}" data-action="complete" bindtap="doAction">标记完成</button>
         </view>
       </view>
@@ -123,6 +123,7 @@
   visible="{{showUserProfile}}"
   info="{{userInfo}}"
   nickname="{{userNickname}}"
+  style-ref-urls="{{userStyleRefUrls}}"
   title="顾客信息"
   hint="{{userInfoHint}}"
   readonly="{{true}}"

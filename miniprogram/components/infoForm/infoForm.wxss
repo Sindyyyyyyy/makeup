@@ -164,6 +164,12 @@
   color: #E08A9E;
   margin-top: 12rpx;
 }
+/* 选填项的说明文字（比 .field-warn 淡，因为不是错误提示） */
+.form-hint {
+  font-size: 22rpx;
+  color: #B89C8A;
+  margin-top: 12rpx;
+}
 
 /* 完整性提示 */
 .missing-tip {

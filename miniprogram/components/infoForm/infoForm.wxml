@@ -92,6 +92,37 @@
         </view>
       </view>
 
+      <!-- 想画的妆容照片（选填，最多 3 张）。
+           属于「这一次预约」，不存进个人资料，所以每次预约都要重新传；
+           在预约卡片的「详细信息」里改时，起点是这一单已存的图
+           （styleRefSeed），可以像素颜照一样增删。 -->
+      <view wx:if="{{showStyleRefs && !readonly}}" class="form-row form-row-col">
+        <text class="form-label">{{L.info.styleRefs}}{{L.info.photosOpen}}{{styleRefPhotos.length}}/{{maxStyleRefPhotos}}{{L.info.photosClose}}</text>
+        <view class="photo-grid">
+          <view wx:for="{{styleRefPhotos}}" wx:key="*this" class="photo-item"
+                bindtap="onPreviewStyleRef" data-idx="{{index}}">
+            <image class="photo-img" src="{{item}}" mode="aspectFill" />
+            <view class="photo-del" catchtap="onDeleteStyleRef" data-idx="{{index}}">×</view>
+          </view>
+          <view wx:if="{{styleRefPhotos.length < maxStyleRefPhotos}}" class="photo-add" bindtap="onAddStyleRef">
+            <text class="photo-add-icon">＋</text>
+            <text class="photo-add-text">{{styleRefPhotos.length}}/{{maxStyleRefPhotos}}</text>
+          </view>
+        </view>
+        <view class="form-hint">{{L.info.styleRefsHint}}</view>
+      </view>
+
+      <!-- 只读展示：化妆师在「详细信息」里看顾客传的参考图（https 临时链接） -->
+      <view wx:if="{{readonly && styleRefUrls.length}}" class="form-row form-row-col">
+        <text class="form-label">{{L.info.styleRefs}}</text>
+        <view class="photo-grid">
+          <view wx:for="{{styleRefUrls}}" wx:key="*this" class="photo-item"
+                bindtap="onPreviewStyleRef" data-idx="{{index}}">
+            <image class="photo-img" src="{{item}}" mode="aspectFill" />
+          </view>
+        </view>
+      </view>
+
     </scroll-view>
 
     <view wx:if="{{missingTip}}" class="missing-tip">{{missingTip}}</view>

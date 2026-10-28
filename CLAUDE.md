@@ -75,7 +75,7 @@ There is no custom component other than `components/infoForm`, `components/admin
 ### Cloud database collections
 
 - `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed). **另有一篇 `_id='slot_times'` 的配置文档**（时段起止时间，见「时段时间是数据」一节）——它没有 `date` 字段，所以按日期查时段表的所有查询都不会命中它；`adminListSlots` 不带日期区间时会把没有 `date` 的文档滤掉。
-- `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `status`, `createTime`, `updateTime`.
+- `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `styleRefPhotos`, `status`, `createTime`, `updateTime`. `styleRefPhotos` 是「想画的妆容照片」（见「想画的妆容照片」一节），选填。
 - `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`, and the server-owned `admin` / `adminUpdateTime` (see 免密登录 below). `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **`admin` must never enter any whitelist patch or the `get` response — it is written only by `adminLogin`/`adminLogout`.** **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself. Without it, passwordless re-mint always fails and the artist re-enters the password every time.
 
 ### Customer profile (头像/昵称/个人信息表)
@@ -112,13 +112,13 @@ Two `userProfile` actions write the doc, and they must stay separate: `save` (av
 
 `readonly` (admin only) makes chips/inputs/photo upload inert and swaps the footer for a single 关闭 button; the guards live in the JS handlers as well as the template. Data comes from the new `adminGetUserProfile` cloud function, which verifies the admin token (duplicated `verifyAdmin` block, per convention), validates the openid shape, and returns a **whitelisted** set of fields — never spread the raw `users` doc back. A missing record is `success:true, exists:false`, not an error, so the page shows "该顾客还没有填写个人信息".
 
-`adminGetUserProfile` has **two entry modes**: `openid` (dashboard booking cards) and `date`+`slot` (课程表里的「详细信息」按钮). The second exists purely to save 云函数调用次数 — 时段管理 only knows `booked: true`, and the customer's `_openid` lives solely in `bookings`, so a two-call client flow (adminGetBookings → adminGetUserProfile) becomes one call that resolves the booking server-side. It queries `.where({date})` only and filters `slot` in memory on purpose: a `date`+`slot` composite query may demand a new index. Nothing in the page prefetches bookings on modal open — opening the slot modal costs **zero** cloud calls, and the profile is fetched only when she taps 详细信息.
+`adminGetUserProfile` has **three entry modes**: `bookingId` (dashboard booking cards — 后台首页预约卡片的「详细信息」), `date`+`slot` (课程表里的「详细信息」按钮), and `openid` (按顾客查资料，不带参考图). The `date`+`slot` mode exists purely to save 云函数调用次数 — 时段管理 only knows `booked: true`, and the customer's `_openid` lives solely in `bookings`, so a two-call client flow (adminGetBookings → adminGetUserProfile) becomes one call that resolves the booking server-side. It queries `.where({date})` only and filters `slot` in memory on purpose: a `date`+`slot` composite query may demand a new index. Nothing in the page prefetches bookings on modal open — opening the slot modal costs **zero** cloud calls, and the profile is fetched only when she taps 详细信息. The `bookingId` mode exists because 「想画的妆容照片」存**预约**上、不在顾客资料上 —— 要知道是哪一单才拿得到参考图；它顺带让 openid 可以从预约文档里反推（服务端自己写的数据，比客户端传的可靠）。
 
 **Booking is gated on a complete profile, and the rule lives in two places that must agree:** `miniprogram/utils/profileInfo.js` (`missingFields(info, {requirePhoto})`) for the client, and `missingProfileFields(nickname, info)` in `cloudfunctions/createBooking/index.js` for the server. Required: 昵称, 性别, 肤质, 大面积爆痘, 整容/医美, 化妆品/发品过敏, plus conditional 敏感性程度 (only when 肤质=敏感性) and 过敏说明 (only when 过敏=有). For booking, 素颜照 needs ≥ 1; on 个人中心 photos stay optional. Both sides take `nickname` + `info` as separate args — never pass the whole user doc to the field-level helpers, that mistake reads as "everything missing".
 
 Client-only enforcement would be worthless here, so `createBooking` re-checks server-side and returns `{code:'PROFILE_INCOMPLETE', missing}`; the page responds by reloading the profile and reopening the form so the gaps are visible.
 
-`pages/index` renders the component in two modes via `data.infoMode`: `confirm` (before submitting a booking — complete + photo required, submitText 确认并预约, and saving continues into `createBooking`) and `view` (the 详细信息 button on each booking card — always open, never blocked on completeness, saves only). `openInfoDetail` is what switches to `view`; `submitBooking` switches to `confirm`. One component instance, mode chosen by the bound props.
+`pages/index` renders the component in two modes via `data.infoMode`: `confirm` (before submitting a booking — complete + photo required, submitText 确认并预约, and saving continues into `createBooking`) and `view` (the 详细信息 button on each booking card — always open, never blocked on completeness, saves only). `openInfoDetail` is what switches to `view`; `submitBooking` switches to `confirm`. One component instance, mode chosen by the bound props. **`view` 模式是**带预约 id** 的**（`data-id="{{item._id}}"`）：弹窗里改的「想画的妆容照片」属于那一单，所以 `openInfoDetail` 要从 `myBookings` 里找出这一单，把它的参考图当编辑起点（`detailStyleRefs`），改完再写回 `bookings`（见「想画的妆容照片」一节）。
 
 ### 中英文界面切换 (utils/i18n.js)
 
@@ -139,7 +139,7 @@ Client-only enforcement would be worthless here, so `createBooking` re-checks se
 
 `utils/slots.js` 和 `utils/profileInfo.js` **零改动** —— 数据里已有稳定标识符：时段名 `{{L.slot[slot.key]}}`（key ∈ morning/afternoon/evening）、状态 `{{L.status[item.status]}}`、星期几 `{{L.dow[item._idx]}}`（`_idx` 0..6 周一起）。`missingFields()` 返回的字段名**保持中文**（前后端各有一份，规则必须一致），只在显示处用 `label('field', m)` 翻。
 
-云函数侧按仓库约定**各抄一份** `MSG = {zh:{…}, en:{…}}` + `normalizeLang(l)`（未知一律 zh）。客户端每次调用带 `lang`；部署顺序无所谓：旧函数收到 `lang` 忽略 → 显示中文，新函数没收到 `lang` → 也显示中文，**两个方向的失败模式都是温和的**。已本地化的：`userProfile` / `createBooking` / `cancelBooking` / `getNoticeImage`。`listWeekSchedule` 没做 —— 它的 message 只进 `console.error`，界面弹的是客户端自己的 `t('common.loadFailed')`。
+云函数侧按仓库约定**各抄一份** `MSG = {zh:{…}, en:{…}}` + `normalizeLang(l)`（未知一律 zh）。客户端每次调用带 `lang`；部署顺序无所谓：旧函数收到 `lang` 忽略 → 显示中文，新函数没收到 `lang` → 也显示中文，**两个方向的失败模式都是温和的**。已本地化的：`userProfile` / `createBooking` / `cancelBooking` / `getNoticeImage` / `updateBookingPhotos`。`listWeekSchedule` 没做 —— 它的 message 只进 `console.error`，界面弹的是客户端自己的 `t('common.loadFailed')`。
 
 > **已知限制：订阅消息仍然是中文。** 模板字段 `thing` 上限 20 字，`phrase` 是「限定五个中文汉字以内」——「Booking confirmed, please arrive on time」有 42 字，装不下；`phrase5` 更是纯中文字段。要支持英文必须在公众平台改模板字段类型，超出本次范围。
 
@@ -192,6 +192,30 @@ Concurrency: `createBooking` claims a slot with a conditional single-document up
 ### 妆造 (makeup styles) pricing
 
 Per-slot 妆造 options and prices are configured by the admin (后台首页课程表) and stored on the `timeSlots` doc, not on the booking. `createBooking` re-validates the chosen `styleName` against the slot's server-side list and **copies the price from the server** — the client never sends a price. If the slot has any styles configured, the customer must pick one.
+
+### 想画的妆容照片（单次预约，不存个人资料）
+
+顾客在预约前的「确认个人信息」弹窗里、素颜照**下方**，可以上传最多 **3 张**参考图（选填），告诉化妆师想要什么效果。
+
+**它属于「这一次预约」，不属于个人资料。** 顾客每次想画的妆容大概率不同，所以每下一单都要重新传 —— 参考图存 `bookings.styleRefPhotos`（云存储 fileID 数组），**绝不进 `users.info`**。`userProfile` 云函数的 `normalizeInfo()` 是白名单式的，`styleRefPhotos` 不在返回结构里，所以它在结构上就写不进个人资料；**不要为了"方便"去改那个白名单**。同理，`MAX_STYLE_REF_PHOTOS` 也**不能**加进 `utils/profileInfo.js` 的 `emptyForm()` —— 那个键集合同时是 `sameForm()` 的比较范围，加进去会打乱「资料没改就跳过写入」的优化。
+
+| 谁 | 在哪 | 怎么拿到图 |
+|---|---|---|
+| 顾客 | 预约确认弹窗（上传） | `infoForm` 组件，`show-style-refs` 属性打开；上传到 `style_refs/` 目录 |
+| 顾客 | 首页「我的预约」卡片上的「详细信息」弹窗（**可改**） | 起点是这一单已存的图（`style-ref-seed`），改完写回 `bookings` |
+| 化妆师 | 「详细信息」弹窗里、素颜照正下方 | `cloud://` fileID 会被桶的 ACL 挡住（桶是「仅创建者可读写」），必须由 `adminGetUserProfile` 用 admin SDK 换 https 临时链接 |
+
+**卡片上不显示参考图**（`pages/index` 的「我的预约」卡片里没有缩略图）—— 参考图只在「详细信息」里看和改，顾客改的也是「这一单」的那组图。
+
+组件里的状态是 `data.styleRefPhotos`（顾客上传的 fileID），**不在 `data.form` 里** —— `form` 是要存进 `users.info` 的个人资料。`onSubmit` 把它单独放在事件负载的 `styleRefPhotos` 键上（`slice()` 过的副本），父页面在第一个 `await` 之前取出来，直接带给 `createBooking`。
+
+**只在弹窗「从关变开」时重置**，而且重置成的是父页面给的初始值 `styleRefSeed`，不是清空（组件 observer 里用实例字段 `_lastVisible` 判断）。资料回包导致 `info` 变化时**不能**重置 —— 否则服务端判定 `PROFILE_INCOMPLETE` 重开弹窗，顾客刚传的图就白传一次。
+
+`styleRefSeed` 另有**一个独立 observer**（`styleRefSeed: function (seed) {...}`），父页面换了一单就换起点。父页面必须**先给 seed、后开弹窗**（两批 `setData`）：这样「刚打开时重置成种子」读到的 `this.data.styleRefSeed` 一定是新值，不会拿到上一单的照片。
+
+**顾客改参考图要走一条专门的写回路径**：新云函数 `updateBookingPhotos`（`bookingId` + `styleRefPhotos`）。身份只认 `cloud.getWXContext()` 里的 openid，归属校验 `doc._openid !== openid` 一律拒绝，**且只允许改 `pending`/`confirmed` 的单**。图没动就别发请求（`sameList()` 比对，`sameForm()` 那个文件的同款工具函数）—— 云函数调用次数是稀缺的资源。
+
+`adminGetUserProfile` 为了拿到参考图，**按预约 `_id` 查**（`event.bookingId`），openid 从**预约文档**里反推（服务端自己写的数据，比客户端传的可靠）；date+slot 那个入口本来就把预约查出来了，顺手换链接，**零额外数据库读取**。第三个入口（只传 openid）拿不到参考图 —— 没有预约就没有参考图。
 
 ### 调用次数：缓存与本地打补丁
 

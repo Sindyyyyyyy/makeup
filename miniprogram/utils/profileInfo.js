@@ -5,6 +5,12 @@
 const MAX_PHOTOS = 5;
 const MIN_PHOTOS_FOR_BOOKING = 1;
 
+// 想画的妆容照片：属于**单次预约**，不属于个人资料。
+// 顾客每次想画的妆容大概率不同，所以每下一单都要重新传，图存 bookings 上。
+// ⚠️ 它**不能**进 emptyForm() —— emptyForm() 的键集合同时是 sameForm() 的比较范围
+// 和 users.info 的形状，进了它就会混进个人资料。
+const MAX_STYLE_REF_PHOTOS = 3;
+
 const GENDER_OPTIONS = ['男', '女'];
 const SKIN_OPTIONS = ['干性', '油性', '混合性', '敏感性', '中性'];
 const YES_NO_OPTIONS = ['有', '无'];
@@ -82,6 +88,19 @@ function sameForm(a, b) {
   return true;
 }
 
+// 两个字符串数组是否逐项相同（顺序也要一样）。
+// 用途：「想画的妆容照片」在顾客改完之后判断有没有动过——没动就别发云函数请求，
+// 云开发免费版每月仅 20 万次调用额度，不该为「没改」付费。
+function sameList(a, b) {
+  const x = Array.isArray(a) ? a : [];
+  const y = Array.isArray(b) ? b : [];
+  if (x.length !== y.length) return false;
+  for (let i = 0; i < x.length; i++) {
+    if (x[i] !== y[i]) return false;
+  }
+  return true;
+}
+
 // 「资料上次从云端拉取的时间」放在 storage，而不是页面实例字段上。
 // 首页和个人中心是两个 tab 页，各有各的实例字段、互相看不见：原来两边各发一次
 // userProfile{action:'get'}，拿回来的还是同一份数据。共用一个时间戳后，
@@ -104,6 +123,7 @@ function clearFetched() {
 module.exports = {
   MAX_PHOTOS,
   MIN_PHOTOS_FOR_BOOKING,
+  MAX_STYLE_REF_PHOTOS,
   GENDER_OPTIONS,
   SKIN_OPTIONS,
   YES_NO_OPTIONS,
@@ -112,6 +132,7 @@ module.exports = {
   missingFields,
   isComplete,
   sameForm,
+  sameList,
   fetchedAt,
   markFetched,
   clearFetched,

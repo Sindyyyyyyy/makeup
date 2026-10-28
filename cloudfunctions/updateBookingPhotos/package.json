@@ -1,0 +1,9 @@
+{
+  "name": "updateBookingPhotos",
+  "version": "1.0.0",
+  "description": "顾客修改自己某一单的「想画的妆容照片」",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
