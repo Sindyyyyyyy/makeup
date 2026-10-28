@@ -92,6 +92,20 @@ Two `userProfile` actions write the doc, and they must stay separate: `save` (av
 
 **昵称 is entered in exactly one place and read everywhere else.** It is set on `pages/profile` and nowhere else — `pages/profile`'s info modal and the booking modal on `pages/index` both render it as read-only text (`form-static`, dashed border) and read it via `userProfile` `{action:'get'}`, with `wx.getStorageSync('user_profile')` as the fast first paint. `pages/index` still *sends* it as `createBooking`'s `name` field so the admin booking list is unchanged; do not rename that field. An empty nickname blocks booking with 请先到个人中心设置昵称.
 
+### 首次登录（头像昵称授权）
+
+新用户第一次进小程序，个人中心「我的资料」卡里**只显示一个「登录」按钮**，头像和昵称都不显示；点一下登录按钮就同时授权微信头像和微信昵称，授权完才渲染头像和昵称。登录过之后回到老行为：点头像只换头像、点昵称只用微信昵称，各自独立授权。
+
+**微信已经没有「一次授权拿头像+昵称」这个 API 了。** `wx.getUserProfile` 已于 2022-10-25 被官方收回，现在只会返回默认灰头像和「微信用户」，不能当主路径。所以「一键登录」只能用现行两块能力拼：头像走 `<button open-type="chooseAvatar">`，昵称走 `<input type="nickname">`（聚焦后键盘上方自带「使用微信昵称」）。**登录按钮本身就是 chooseAvatar 按钮**，点它直接调起微信头像选择器；选完之后代码把昵称输入框的 `focus` 置 true，键盘上那个「使用微信昵称」直接可点——两次授权连成一次登录。
+
+- `loggedIn` = 有头像**或**有昵称。首屏先用 `storage` 的 `user_profile` 缓存判断（那只是渲染缓存，为了秒开），云端回包再校准。**`loggedIn` 只从 false 变 true** —— 云端回包不能把正在进行的登录流程打回「登录」态。
+- 登录流程：`chooseAvatar` → 上传头像（`uploadAvatar`；临时路径会被清理，必须立刻换成 fileID）→ 切资料态 + 延迟 300ms 置 `nickFocus`（要等头像弹层彻底关掉，否则 iOS 上键盘弹不出来）→ **头像先落库**（顾客不填昵称就走人也不丢）→ 昵称输入后防抖 600ms 自动落库 → 提示「登录成功」。
+- **保存必须串行。** 头像那次 save 和昵称那次 save 会连着发，并发时后到的请求会把先到的覆盖掉 —— 昵称='' 的那次若后到，`users.nickname` 就被抹掉了。`saveProfile()` 用一条 Promise 链串起来，真正干活的是 `doSave()`。
+- **回包只覆盖「发出去那一刻」的值。** 等回包期间顾客又改了昵称，不能被这次回包冲掉：`doSave` 先记住 `sentAvatar`/`sentNickname`，回包后逐字段比对再决定要不要 setData，`dirty` 再用新基准线重算。
+- 静默保存**失败一定要提示**：登录流程里的自动保存不弹「已保存」，但失败必须弹，否则顾客选好了头像却发现没存上而毫无提示。
+- 登录态下「保存资料」按钮**不出现**（没什么可存）；登录完成后 `dirty=false`，按钮自动变灰。
+- 文案在 `utils/i18n.js` 的 `profile.*`（zh/en 都要有，en 缺词会静默回退中文）。首页提示「未设置昵称」的两处文案也指向「个人中心登录」。
+
 ### 个人信息表组件 (components/infoForm)
 
 `components/infoForm/` is the single copy of the form — used by `pages/profile` (title 个人信息, `require-complete=false`, so it saves partially-filled data), `pages/index` as the pre-booking confirmation and its 详细信息 button, and `pages/admin` with `readonly` for viewing a customer's data. All three register it in their page `.json` via `usingComponents`. The component owns editing and photo upload only; the parent decides where to store and what happens after. Custom components exist only here — don't add more casually.

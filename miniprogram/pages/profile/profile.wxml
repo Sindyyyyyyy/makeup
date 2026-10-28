@@ -13,7 +13,22 @@
       </view>
     </view>
 
-    <view class="profile-row">
+    <!-- 首次进入（还没登录）：资料卡里只放一个「登录」按钮，
+         头像和昵称都不显示。登录按钮本身就是 chooseAvatar 按钮——点它直接调起
+         微信头像选择器，在弹层里选「微信头像」即授权头像；选完之后代码会自动
+         聚焦下面的昵称输入框，键盘上方自带「使用微信昵称」，一点就完成昵称授权。
+         ⚠️ 微信自 2022-10-25 收回了 wx.getUserProfile，一次授权拿不到「头像+昵称」
+         两个字段，这是现行规则下唯一合规的「一键登录」写法。 -->
+    <view wx:if="{{!loggedIn}}" class="login-block">
+      <button class="btn-primary login-btn" open-type="chooseAvatar" bindchooseavatar="onLoginChooseAvatar"
+              loading="{{uploading}}" disabled="{{uploading}}">
+        {{L.profile.login}}
+      </button>
+      <view class="login-tip">{{L.profile.loginTip}}</view>
+    </view>
+
+    <!-- 已登录：点头像只换头像，点昵称只用微信昵称（各自独立授权，老行为不变） -->
+    <view wx:else class="profile-row">
       <!-- open-type="chooseAvatar" 调起微信头像选择器 -->
       <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
         <image wx:if="{{avatarUrl}}" class="avatar" src="{{avatarUrl}}" mode="aspectFill" />
@@ -24,14 +39,16 @@
 
       <view class="info-col">
         <view class="nick-label">{{L.profile.nickname}}</view>
-        <!-- type="nickname" 调起微信昵称选择器 -->
+        <!-- type="nickname" 调起微信昵称选择器。focus 只在登录流程里置 true，
+             用来自动弹出键盘上的「使用微信昵称」，平时保持 false 不打扰用户。 -->
         <input class="nick-input" type="nickname" value="{{nickname}}" placeholder="{{L.profile.nicknamePlaceholder}}"
-               bindinput="onNicknameInput" bindblur="onNicknameInput" maxlength="20" />
-        <view class="tip">{{L.profile.nicknameTip}}</view>
+               focus="{{nickFocus}}" bindinput="onNicknameInput" bindblur="onNicknameInput" maxlength="20" />
+        <view class="tip">{{loginStep === 'nick' ? L.profile.loginNickTip : L.profile.nicknameTip}}</view>
       </view>
     </view>
 
-    <button class="btn-primary save-btn" bindtap="onSave" loading="{{saving}}" disabled="{{saving || !dirty}}">
+    <!-- 没登录时没什么可存的，保存按钮不出现 -->
+    <button wx:if="{{loggedIn}}" class="btn-primary save-btn" bindtap="onSave" loading="{{saving}}" disabled="{{saving || !dirty}}">
       {{L.profile.saveProfile}}
     </button>
   </view>

@@ -129,6 +129,30 @@
   margin-top: 32rpx;
 }
 
+/* 首次进入的登录态：资料卡里只有一颗登录按钮 */
+.login-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12rpx 0 8rpx;
+}
+.login-btn {
+  width: 100%;
+  font-size: 30rpx;
+  letter-spacing: 4rpx;
+}
+/* 微信 button 自带的 ::after 描边，去掉才干净 */
+.login-btn::after {
+  border: none;
+}
+.login-tip {
+  font-size: 22rpx;
+  color: #B0A0A0;
+  margin-top: 20rpx;
+  text-align: center;
+  line-height: 1.6;
+}
+
 /* 个人信息表入口 */
 .info-entry-card {
   display: flex;
