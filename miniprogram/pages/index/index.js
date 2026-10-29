@@ -58,6 +58,14 @@ Page({
     // 界面语言。'zh' | 'en'，以及整份文案字典 L（模板里写 {{L.index.xxx}}）
     lang: '',
     L: {},
+    // 评价弹窗（只给「已完成」的预约）。同一个弹窗兼「写评价」和「看/改评价」，
+    // reviewExists 决定按钮文案（提交评价 / 保存修改）。
+    showReview: false,
+    reviewBookingId: '',
+    reviewBookingLabel: '',
+    reviewContent: '',
+    reviewExists: false,
+    reviewSubmitting: false,
   },
 
   onLoad() {
@@ -207,6 +215,9 @@ Page({
         // 预约自带的时间段快照才是权威值（化妆师改过时间它会跟着更新），
         // SLOT_NAME_MAP 只是它缺失时的兜底。
         slotLabel: b.slotName || SLOT_NAME_MAP[b.slot] || b.slot,
+        // 评价挂在预约文档上（bookings.review），listWeekSchedule 返回整条文档，
+        // 所以这里本地就能判断「评价过没有」——不用多打一次云函数调用。
+        hasReview: !!(b.review && b.review.content),
       }));
 
     const grid = [[], [], []];
@@ -596,5 +607,84 @@ Page({
         }
       },
     });
+  },
+
+  // ============ 评价 ============
+  // 只有「已完成」的预约能评价。评价存在预约文档上（bookings.review），
+  // 打开弹窗要用的数据本地就有 —— 一次云函数调用都不用打。
+  openReview(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset.id) || '';
+    const booking = this.data.myBookings.find((b) => b._id === id) || null;
+    // 双保险：按钮只给已完成的单，但服务端还会再校验一次
+    if (!booking || booking.status !== 'completed') return;
+    const content = (booking.review && booking.review.content) || '';
+    this.setData({
+      showReview: true,
+      reviewBookingId: booking._id,
+      reviewBookingLabel: `${booking.date} ${booking.slotLabel}`,
+      reviewContent: content,
+      // 评价过 → 弹窗是「查看/修改」，按钮文案跟着变
+      reviewExists: !!content,
+    });
+  },
+
+  closeReview() {
+    this.setData({
+      showReview: false,
+      reviewBookingId: '',
+      reviewContent: '',
+      reviewExists: false,
+    });
+  },
+
+  onReviewInput(e) {
+    this.setData({ reviewContent: e.detail.value });
+  },
+
+  async submitReview() {
+    const content = (this.data.reviewContent || '').trim();
+    if (!content) {
+      // 空内容直接拦在本地，不浪费一次云函数调用
+      return wx.showToast({ title: t('index.reviewRequired'), icon: 'none' });
+    }
+    const bookingId = this.data.reviewBookingId;
+    if (!bookingId) return;
+    // 先存下来：下面的 setData 会清掉 reviewExists
+    const isUpdate = this.data.reviewExists;
+
+    this.setData({ reviewSubmitting: true });
+    try {
+      const res = await wx.cloud.callFunction({
+        name: 'submitReview',
+        data: { bookingId, content, lang: this.data.lang },
+      });
+      if (res.result && res.result.success) {
+        // 就地打补丁：不重拉整张预约列表（省一次 listWeekSchedule）
+        this.setData({
+          showReview: false,
+          reviewContent: '',
+          reviewExists: false,
+          myBookings: this.data.myBookings.map((b) => (
+            b._id === bookingId ? { ...b, review: { content }, hasReview: true } : b
+          )),
+        });
+        wx.showToast({
+          title: isUpdate ? t('index.reviewUpdated') : t('index.reviewSubmitted'),
+          icon: 'success',
+        });
+      } else {
+        // 服务端的拒绝理由（不是本人的单 / 不是已完成）直接透出来
+        wx.showToast({
+          title: (res.result && res.result.message) || t('common.saveFailed'),
+          icon: 'none',
+          duration: 2500,
+        });
+      }
+    } catch (e) {
+      console.error('提交评价失败', e);
+      wx.showToast({ title: t('common.saveFailedRetry'), icon: 'none' });
+    } finally {
+      this.setData({ reviewSubmitting: false });
+    }
   },
 });

@@ -57,6 +57,11 @@ Component({
     // 订阅消息（一次性）的 UI 提示。**不是服务端状态**——服务端不查它，
     // 能不能发出去取决于微信侧的额度，这里只是「她点过没有」的展示。
     notifyEnabled: false,
+    // 顾客评价弹窗（只读）。评价存在预约文档上，列表里已经带回来了。
+    showReview: false,
+    reviewBookingLabel: '',
+    reviewContent: '',
+    reviewTime: '',
   },
 
   // 只校验本地是否存在令牌，真正的鉴权在云函数。
@@ -224,6 +229,9 @@ Component({
             // SLOT_NAME_MAP 只是它缺失时的兜底。
             slotLabel: b.slotName || SLOT_NAME_MAP[b.slot] || b.slot,
             createdAtText: formatDateTime(b.createTime),
+            // 评价挂在预约文档上（bookings.review），adminGetBookings 返回整条
+            // 文档，所以这里本地就能判断「顾客评价过没有」，不用多打一次调用。
+            hasReview: !!(b.review && b.review.content),
           }));
           const bookings = append ? this.data.bookings.concat(mapped) : mapped;
 
@@ -328,6 +336,30 @@ Component({
       // 参考图也一起清掉：不然下次打开别人的资料时会残留上一次的图
       this.setData({ showUserProfile: false, userStyleRefUrls: [] });
     },
+
+    // 查看顾客对这一单的评价（只读）。
+    // 评价存在预约文档上（bookings.review），列表数据里已经带着了 ——
+    // 直接用本地数据填弹窗，不发请求。
+    openReview(e) {
+      const id = (e && e.currentTarget && e.currentTarget.dataset.bookingId) || '';
+      // 从 bookings 找而不是 filtered：筛选到「已完成」之外时也能点开
+      const b = this.data.bookings.find((x) => x._id === id);
+      if (!b || !b.review) return;
+      this.setData({
+        showReview: true,
+        reviewBookingLabel: `${b.date} ${b.slotLabel}`,
+        reviewContent: b.review.content || '',
+        // updateTime 是最后一次修改的时间，老数据没有就退回 createTime
+        reviewTime: formatDateTime(b.review.updateTime || b.review.createTime),
+      });
+    },
+
+    closeReview() {
+      this.setData({ showReview: false, reviewContent: '' });
+    },
+
+    // 弹窗内层用 catchtap 挡住冒泡，否则点弹窗里的内容会顺手把弹窗关了
+    noop() {},
 
     // 订阅消息：点一次 +1 条「新预约提醒」额度（两个模板在同一个弹窗里一次授权，
     // tmplIds 上限 3 个，不需要分两次打扰）。

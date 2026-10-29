@@ -1,0 +1,9 @@
+{
+  "name": "submitReview",
+  "version": "1.0.0",
+  "description": "顾客评价自己已完成的预约（可重复提交＝修改）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

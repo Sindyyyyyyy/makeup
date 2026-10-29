@@ -320,3 +320,67 @@
   color: #BBB;
   margin-top: 32rpx;
 }
+
+/* 顾客评价弹窗。info-form 组件自带弹窗样式，但它是独立组件
+   （styleIsolation: isolated），这里的样式管不到它，所以自己写一套。 */
+.modal-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #FFFFFF;
+  width: 90%;
+  max-width: 700rpx;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.15);
+}
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #C95B7C;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+.form-row {
+  margin-bottom: 24rpx;
+}
+.form-label {
+  font-size: 26rpx;
+  color: #4A4A4A;
+  display: block;
+  margin-bottom: 8rpx;
+  font-weight: 500;
+}
+.form-static {
+  border: 2rpx dashed #FFE0E8;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  font-size: 28rpx;
+  background: #FFF8FA;
+  color: #4A4A4A;
+}
+.review-content {
+  font-size: 28rpx;
+  color: #4A4A4A;
+  line-height: 1.6;
+  background: #FFF8F9;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  word-break: break-all;
+}
+.review-time {
+  font-size: 22rpx;
+  color: #BBB;
+  margin-top: 12rpx;
+}
+.modal-buttons {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 32rpx;
+}

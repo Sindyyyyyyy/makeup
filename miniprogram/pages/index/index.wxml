@@ -121,6 +121,12 @@
         <button class="btn-detail" size="mini" bindtap="openInfoDetail" data-id="{{item._id}}">{{L.index.detail}}</button>
         <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">{{L.index.cancelBooking}}</button>
       </view>
+      <!-- 已完成的单才给评价入口；评价过就变成「查看评价」（同一个弹窗，可改） -->
+      <view wx:if="{{item.status === 'completed'}}" class="bd-actions">
+        <button class="btn-review" size="mini" bindtap="openReview" data-id="{{item._id}}">
+          {{item.hasReview ? L.index.viewReview : L.index.review}}
+        </button>
+      </view>
     </view>
   </view>
 </view>
@@ -156,6 +162,35 @@
     <view class="modal-buttons">
       <button class="btn-secondary" bindtap="closeModal">{{L.common.cancel}}</button>
       <button class="btn-primary" bindtap="submitBooking" loading="{{submitting}}">{{L.index.submitBooking}}</button>
+    </view>
+  </view>
+</view>
+
+<!-- 评价弹窗（只给「已完成」的预约）
+     同一个弹窗兼两个用途：没评价过 → 写一条；评价过 → 看/改已有的。
+     内容直接放在 textarea 里可编辑，不用额外的只读态。 -->
+<view wx:if="{{showReview}}" class="modal-mask" bindtap="closeReview">
+  <view class="modal" catchtap="noop">
+    <view class="modal-title">{{L.index.reviewTitle}}</view>
+
+    <view class="form-row">
+      <text class="form-label">{{L.index.reviewBooking}}</text>
+      <view class="form-static">{{reviewBookingLabel}}</view>
+    </view>
+
+    <view class="form-row">
+      <text class="form-label">{{L.index.reviewContent}}</text>
+      <textarea class="review-textarea" maxlength="200" value="{{reviewContent}}"
+                placeholder="{{L.index.reviewPlaceholder}}" bindinput="onReviewInput"></textarea>
+      <view class="review-hint">{{L.index.reviewHint}}</view>
+      <view class="review-counter">{{reviewContent.length}}/200</view>
+    </view>
+
+    <view class="modal-buttons">
+      <button class="btn-secondary" bindtap="closeReview">{{L.common.cancel}}</button>
+      <button class="btn-primary" bindtap="submitReview" loading="{{reviewSubmitting}}">
+        {{reviewExists ? L.index.reviewUpdateSubmit : L.index.reviewSubmit}}
+      </button>
     </view>
   </view>
 </view>

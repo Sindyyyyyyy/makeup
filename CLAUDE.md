@@ -75,7 +75,7 @@ There is no custom component other than `components/infoForm`, `components/admin
 ### Cloud database collections
 
 - `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed). **另有一篇 `_id='slot_times'` 的配置文档**（时段起止时间，见「时段时间是数据」一节）——它没有 `date` 字段，所以按日期查时段表的所有查询都不会命中它；`adminListSlots` 不带日期区间时会把没有 `date` 的文档滤掉。
-- `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `styleRefPhotos`, `status`, `createTime`, `updateTime`. `styleRefPhotos` 是「想画的妆容照片」（见「想画的妆容照片」一节），选填。
+- `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `styleRefPhotos`, `status`, `createTime`, `updateTime`. `styleRefPhotos` 是「想画的妆容照片」（见「想画的妆容照片」一节），选填。`review` 是顾客对这一单的评价 `{ content, createTime, updateTime }`（见「顾客评价」一节），只有「已完成」的单才有。
 - `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`, and the server-owned `admin` / `adminUpdateTime` (see 免密登录 below). `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **`admin` must never enter any whitelist patch or the `get` response — it is written only by `adminLogin`/`adminLogout`.** **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself. Without it, passwordless re-mint always fails and the artist re-enters the password every time.
 
 ### Customer profile (头像/昵称/个人信息表)
@@ -217,6 +217,17 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 `adminGetUserProfile` 为了拿到参考图，**按预约 `_id` 查**（`event.bookingId`），openid 从**预约文档**里反推（服务端自己写的数据，比客户端传的可靠）；date+slot 那个入口本来就把预约查出来了，顺手换链接，**零额外数据库读取**。第三个入口（只传 openid）拿不到参考图 —— 没有预约就没有参考图。
 
+### 顾客评价（已完成 → 评价 / 查看评价）
+
+化妆师把预约标记成「已完成」之后，顾客端首页「我的预约」的卡片上出现 **评价** 按钮；评价完变成 **查看评价**（同一个弹窗，内容可改，改完「保存修改」）。已取消 / 已拒绝 / 待确认 / 已确认的卡片**一个按钮都不动**。
+
+- **评价挂在预约文档上**：`bookings.review = { content, createTime, updateTime }`，**不建 `reviews` 集合**。因为 `listWeekSchedule`（顾客端）和 `adminGetBookings`（后台）都**不带 projection 地返回整条预约文档**，`review` 自动跟着回包走 —— 页面判断「评价过没有」**一次云函数调用都不用多打**，也不用手动去控制台建集合。
+- **顾客端**（`pages/index`）：弹窗直接用 `myBookings` 里的本地数据填（`openReview`），提交走新云函数 `submitReview`（`bookingId` + `content`）。成功后就地打补丁 `myBookings.map(...)`，**不重拉整张列表**。
+- **后台**（`components/adminPanel`）：「已完成**且**顾客评价过」的卡片才显示「查看评价」按钮（`item.hasReview`），点开弹框用本地数据填 —— 同样零额外调用。后台不参与翻译，文案直接写中文。
+- **服务端是硬约束**：`submitReview` 只认 `cloud.getWXContext()` 里的 openid，归属校验 `doc._openid !== openid` 一律拒绝，**且只允许评价 `status === 'completed'` 的单**。前端的按钮只是第一层 —— `sweepOverdue` 可能刚把状态改过。
+- 一单一条评价：再次提交就是「修改」，服务端覆盖同一条记录并保留第一次的 `createTime`、刷新 `updateTime`。
+- `submitReview` 只回传 `{ content }`，**不回传时间戳** —— `db.serverDate()` 序列化回客户端会变成 `{$date: ...}`，客户端用不上；后台那边是从库里原样读的。
+
 ### 调用次数：缓存与本地打补丁
 
 免费额度每月 20 万次，不是随便花的。原则：**能本地改就别重拉，能并行就别串行；只有低风险数据才进缓存。**
@@ -236,6 +247,9 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 | 开关时段 / 保存妆造 | `adminSetTimeSlot` → `date`/`slot`/`slotState` | `scheduleGrid.patchCell()` |
 | 妆造增删改 | `adminStyles` → `style`（含 `_id`） | `adminStyles.applyLocalStyles()` |
 | 改时段起止时间 | `adminSlotTimes` → `slotTimes` | `scheduleGrid.patchCellTime()` / 时间管理页重建 `rows` |
+| 写顾客评价 | `submitReview` → `review` | `pages/index` 就地改 `myBookings` 那一条 |
+
+**顾客评价也不额外花云函数调用**：评价挂在预约文档上，`listWeekSchedule` / `adminGetBookings` 返回整条预约文档时 `review` 就跟着回来了。
 
 **时段起止时间的配置不额外花云函数调用**：它跟着 `listWeekSchedule`（顾客端）和 `adminListSlots`（后台）一起回来。只有打开「时间管理」页时多一次 `adminSlotTimes{action:'get'}`，以及真正改时间时的 `set` / `setDate`。云函数内部的配置文档读不占额度。
 

@@ -107,6 +107,10 @@
           <button class="btn-detail" size="mini" data-booking-id="{{item._id}}" bindtap="openUserProfile">详细信息</button>
           <button class="btn-primary" size="mini" data-id="{{item._id}}" data-action="complete" bindtap="doAction">标记完成</button>
         </view>
+        <!-- 已完成且顾客评价过才显示「查看评价」；没评价的单这里什么都不显示 -->
+        <view wx:if="{{item.status === 'completed' && item.hasReview}}" class="bd-actions">
+          <button class="btn-detail" size="mini" data-booking-id="{{item._id}}" bindtap="openReview">查看评价</button>
+        </view>
       </view>
     </view>
 
@@ -130,3 +134,20 @@
   lang="zh"
   bind:close="closeUserProfile"
 />
+
+<!-- 顾客评价（只读）。评价挂在预约文档上，adminGetBookings 已经带回来了，
+     这里直接用本地数据填弹窗，不用再打一次云函数。 -->
+<view wx:if="{{showReview}}" class="modal-mask" bindtap="closeReview">
+  <view class="modal" catchtap="noop">
+    <view class="modal-title">顾客评价</view>
+    <view class="form-row">
+      <text class="form-label">预约</text>
+      <view class="form-static">{{reviewBookingLabel}}</view>
+    </view>
+    <view class="review-content">{{reviewContent}}</view>
+    <view wx:if="{{reviewTime}}" class="review-time">评价时间：{{reviewTime}}</view>
+    <view class="modal-buttons">
+      <button class="btn-secondary" bindtap="closeReview">关闭</button>
+    </view>
+  </view>
+</view>
