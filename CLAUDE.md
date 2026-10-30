@@ -237,7 +237,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 - **服务端是硬约束**：`submitReview` 只认 `cloud.getWXContext()` 里的 openid，归属校验 `doc._openid !== openid` 一律拒绝，**且只允许评价 `status === 'completed'` 的单**。前端的按钮只是第一层 —— `sweepOverdue` 可能刚把状态改过。
 - 一单一条评价：再次提交就是「修改」，服务端覆盖同一条记录并保留第一次的 `createTime`、刷新 `updateTime`。
 - `submitReview` 只回传 `{ content }`，**不回传时间戳** —— `db.serverDate()` 序列化回客户端会变成 `{$date: ...}`，客户端用不上；后台那边是从库里原样读的。
-- **两端各有一次通知**（详见「订阅消息」一节）：化妆师点「标记完成」→ 服务端 `adminUpdateBooking` 给顾客发「提醒评价」；顾客提交**首次**评价 → 服务端 `submitReview` 给每个 admin 发「评价完成」。改评价不再发消息（省额度）。所以 `submitReview` 需要 `config.json` 里的 `subscribeMessage.send` 权限。
+- **两端各有一次通知**（详见「订阅消息」一节）：这一单被标记完成（化妆师手动点「标记完成」，或 `sweepOverdue` 定时自动结算）→ 服务端给顾客发「提醒评价」；顾客提交**首次**评价 → 服务端 `submitReview` 给每个 admin 发「评价完成」。改评价不再发消息（省额度）。所以 `submitReview` 和 `sweepOverdue` 都需要 `config.json` 里的 `subscribeMessage.send` 权限。
 
 ### 化妆注意事项图（两个入口，同一个弹窗）
 
@@ -301,7 +301,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 | 收件人 | 触发 | 模板 |
 |---|---|---|
 | 顾客 | `adminUpdateBooking` 的 `confirmed`/`rejected` | 化妆师通过／拒绝（`date2` 预约时间 / `thing3` 预约项目 / `phrase5` 预约结果 / `thing6` 温馨提示） |
-| 顾客 | `adminUpdateBooking` 的 `completed` | 提醒评价（`date6` 服务日期 / `thing3` 服务项目 / `thing1` 温馨提示） |
+| 顾客 | `adminUpdateBooking` 的 `completed` **或** `sweepOverdue` 自动结算成 `completed` | 提醒评价（`date6` 服务日期 / `thing3` 服务项目 / `thing1` 温馨提示） |
 | 化妆师 | `createBooking` 成功 | 顾客预约（`thing20` 预约人 / `time2` 预约时间 / `thing7` 预约项目 / `thing9` 温馨提示） |
 | 化妆师 | `cancelBooking` 成功 | 顾客取消预约（`name1` 姓名 / `time4` 原预约时间 / `thing2` 原预约项目 / `thing13` 温馨提醒） |
 | 化妆师 | `submitReview` 首次评价成功 | 评价完成（`thing3` 评价项目 / `thing2` 评价内容） |
@@ -314,7 +314,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 **前三个模板都没有单独的「时段」字段，时段是搭在预约时间里的** —— `date`/`time` 两种类型都接受 `2026-10-20 09:30:00` 这种带时分的格式（平台示例即如此），所以「预约时间」一个字段就同时表达了日期和具体时段，不必再加字段。
 
-注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），连字符写法整段塞进 `date`/`time` 字段会被判非法，所以**四个模板都只取开始时间**，拼成 `YYYY-MM-DD HH:mm:00`（「提醒评价」的 `date6` 也是这个写法）。开始时间的来源：`adminUpdateBooking` 和 `cancelBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，化妆师改时段起止时间时 `slotName` 会被 `adminSlotTimes` 同步更新，这里自动跟着准）；`createBooking` 从下单那一刻的**有效时间段**切（配置里的值，单日覆盖优先）。缺时段时退化成纯日期，消息仍能发出去。
+注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），连字符写法整段塞进 `date`/`time` 字段会被判非法，所以**四个模板都只取开始时间**，拼成 `YYYY-MM-DD HH:mm:00`（「提醒评价」的 `date6` 也是这个写法）。开始时间的来源：`adminUpdateBooking`、`cancelBooking` 和 `sweepOverdue` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，化妆师改时段起止时间时 `slotName` 会被 `adminSlotTimes` 同步更新，这里自动跟着准）；`createBooking` 从下单那一刻的**有效时间段**切（配置里的值，单日覆盖优先）。缺时段时退化成纯日期，消息仍能发出去。
 
 **授权点**（`wx.requestSubscribeMessage` 必须由用户手势触发，放进 load/onShow/网络回调会报 `can only be invoked by user TAP action`）：
 
@@ -325,19 +325,23 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 **评价通知只发一次** —— `submitReview` 里 `prev` 为空（这一单此前没有评价）才发，改评价不再打扰化妆师，省额度。
 
-**模板 ID 每个在「客户端 `notify.js`」和「发它的那一个云函数」各抄一份，不共享模块** —— `miniprogram/utils` 不在云函数文件系统里，反之亦然；共享只能靠人工复制进每个部署目录，漏复制 = 加载期崩溃。现在发消息的云函数有四个：`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview`。字段的 key（`thing20`/`time2`/`phrase5`/`date6`/…）必须与公众平台模板详情页**逐字一致**，key 错了消息静默发不出去。`thing` 上限 20 字、`phrase` 纯中文且 ≤5 字，所以「已确认」「已拒绝」都能放进 `phrase5`。`thing6` 温馨提示按结果分派两条（确认「预约已确认，请准时到店」11 字 / 拒绝「化妆师临时有事，具体原因请与化妆师联系」19 字，都未触顶）；化妆师侧的 `thing9`/`thing13` 同理是固定文案。**都不要塞 `booking.remark`**（上限 500 字会撑爆 20）。
+**模板 ID 每个在「客户端 `notify.js`」和「发它的那一个云函数」各抄一份，不共享模块** —— `miniprogram/utils` 不在云函数文件系统里，反之亦然；共享只能靠人工复制进每个部署目录，漏复制 = 加载期崩溃。现在发消息的云函数有五个：`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview` / `sweepOverdue`。字段的 key（`thing20`/`time2`/`phrase5`/`date6`/…）必须与公众平台模板详情页**逐字一致**，key 错了消息静默发不出去。`thing` 上限 20 字、`phrase` 纯中文且 ≤5 字，所以「已确认」「已拒绝」都能放进 `phrase5`。`thing6` 温馨提示按结果分派两条（确认「预约已确认，请准时到店」11 字 / 拒绝「化妆师临时有事，具体原因请与化妆师联系」19 字，都未触顶）；化妆师侧的 `thing9`/`thing13` 同理是固定文案。**都不要塞 `booking.remark`**（上限 500 字会撑爆 20）。
 
-**`sendSubscribeMessage()` 永远不抛** —— 这是「通知失败不影响预约」的**结构性保证**，不是偷懒：四个云函数各自被一个大 try/catch 包着（`createBooking` 里那个 catch 还负责 `add()` 失败时回滚时段占用，`submitReview` 里那个 catch 包着整条评价写入），helper 一旦被换成裸的 `cloud.openapi.subscribeMessage.send(...)`，发送失败就会冒泡进那个 catch，把一条**已成功的**预约报成「服务器错误」、或把一条**已经存进库**的评价报成「保存失败」。调用方可以无脑 `await`。
+**`sendSubscribeMessage()` 永远不抛** —— 这是「通知失败不影响预约」的**结构性保证**，不是偷懒：这几个云函数各自被一个大 try/catch 包着（`createBooking` 里那个 catch 还负责 `add()` 失败时回滚时段占用，`submitReview` 里那个 catch 包着整条评价写入），helper 一旦被换成裸的 `cloud.openapi.subscribeMessage.send(...)`，发送失败就会冒泡进那个 catch，把一条**已成功的**预约报成「服务器错误」、或把一条**已经存进库**的评价报成「保存失败」。`sweepOverdue` 里更不能抛 —— 结算逻辑失败会让下个小时的定时器把同一单再翻一次。调用方可以无脑 `await`。
 
 化妆师 openid 由 `findArtistOpenids()` 实时查 `users.where({admin: true})` 得到，**不缓存** —— `adminLogout` 把 `admin` 置 false 后缓存副本会继续给她发消息。这个字段只在这里被服务端读取，绝不进 `userProfile` 的白名单或 `get` 响应；openid 绝不返回给客户端。
 
 **可以有多个 admin**：多个微信号都输过密码就会有多条 `admin: true`，**她们都要收到通知** —— 所以这里返回数组、**不能 `limit(1)`**（那会随机只通知其中一个，其中一人永远收不到）。`data` 只拼一次，在 `touser` 上分叉后用 `Promise.all` 并发发；因为 `sendSubscribeMessage` 永不抛，其中一人没授权（`43101`）不影响其他人收到。`limit(100)` 只是防呆，另做了 `_openid` 去重防止脏数据导致同一人收两条。
 
-**`MINI_STATE` 决定订阅消息卡片点开后打开哪个版本**，四个云函数各抄一份：测试期 `'trial'`（体验版，体验成员随时能打开）；**正式上线前必须改成 `'formal'` 并重新部署四个函数**，否则线上普通顾客打不开。**绝不要用 `'developer'` 给顾客测** —— 开发版只在开发者工具扫码时有效、几分钟就过期，点卡片会提示「开发版小程序已过期，请在开发者工具中重新扫码」，而这个报错与通知本身发没发出去毫无关系，极易误判成发送失败。
+**`MINI_STATE` 决定订阅消息卡片点开后打开哪个版本**，五个云函数各抄一份：测试期 `'trial'`（体验版，体验成员随时能打开）；**正式上线前必须改成 `'formal'` 并重新部署五个函数**，否则线上普通顾客打不开。**绝不要用 `'developer'` 给顾客测** —— 开发版只在开发者工具扫码时有效、几分钟就过期，点卡片会提示「开发版小程序已过期，请在开发者工具中重新扫码」，而这个报错与通知本身发没发出去毫无关系，极易误判成发送失败。
 
-四个云函数目录各有一份 `config.json` 声明 `permissions.openapi: ["subscribeMessage.send"]`（`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview`）。**`config.json` 只在上传时被读取**（必须选「上传并部署：云端安装依赖」），且权限有**约 10 分钟服务端缓存** —— 改完立刻测报「无权限」是正常的，别在这段时间里 debug。
+五个云函数目录各有一份 `config.json` 声明 `permissions.openapi: ["subscribeMessage.send"]`（`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview` / `sweepOverdue`）。**`config.json` 只在上传时被读取**（必须选「上传并部署：云端安装依赖」），且权限有**约 10 分钟服务端缓存** —— 改完立刻测报「无权限」是正常的，别在这段时间里 debug。
 
-**已知限制：`sweepOverdue` 定时把 `confirmed` 自动翻成 `completed` 的那条路径不发提醒** —— 需求挂在「标记完成」按钮上，而且那个定时函数的 `config.json` 里 `"openapi": []`，没给 `subscribeMessage.send` 权限。自动完成的单，顾客只能自己刷首页才看到「评价」按钮。
+**「标记完成 → 顾客（提醒评价）」有两条触发路径，发的是同一个模板** —— 化妆师手动点「标记完成」走 `adminUpdateBooking`，定时结算把 `confirmed` 自动翻成 `completed` 走 `sweepOverdue`。两条路径**互斥**：两边都用带 `status` 条件的 CAS 改状态（`updated === 0` 说明状态已被化妆师/顾客改过，就跳过），只有改成功的那一方会发消息 —— 所以一单最多一条提醒，正好对上顾客下单时那 1 次授权。`sweepOverdue` 因此也需要 `config.json` 里的 `subscribeMessage.send` 权限。
+
+> 定时器是**每小时**跑一次（`config.json` 里 `"config": "0 0 * * * * *"`），所以自动完成的单，提醒最晚比时段结束晚不到 1 小时到。已经结算成 `completed` 的老单不会被重扫，**不会补发历史提醒**。
+
+**`pending → rejected` 的自动结算路径不发通知** —— 顾客被自动拒绝时收不到消息（`TPL_CUSTOMER_RESULT` 只在 `adminUpdateBooking` 里发）。这是刻意保留的现状：自动拒绝的语义（时段已过、化妆师没处理）要不要告诉顾客属于产品决定，改之前先确认要发什么文案。
 
 **排障入口：云开发控制台 → 云函数 → 日志 → 搜 `subscribeMessage`。** 用户在公众平台改了模板是头号故障源（症状是通知全收不到但预约功能完全正常，且**永远不会暴露给用户**，只出现在日志里）：删模板 → `40037`；改字段名 → key 变了 → `47003`；加字段 → 没传 → `47004`（**整条发不出去**）；`code=43101` 则是额度用尽/没授权，业务正常不用改代码；`-501001` 是 config.json 权限没生效。DevTools 模拟器不弹真授权窗，控制台「云端测试」调 `subscribeMessage.send` 返回 `-501001` 是**预期的假阳性**（不带小程序云调用上下文）——端到端只能真机验证。
 

@@ -73,6 +73,74 @@ function beijingNow() {
   };
 }
 
+// ============ 订阅消息（按仓库约定各抄一份，不共享模块）============
+// 模板 ID 在 公众平台 → 订阅消息 → 我的模板 申请后填写。
+// 与 miniprogram/utils/notify.js、adminUpdateBooking 保持一致，改一处要改所有发消息的云函数。
+//
+// 为什么定时结算也要发消息：顾客下单时一次性授权了「标记完成 → 顾客（提醒评价）」
+// 这条模板，**那 1 条发送额度是跟这一单绑定的** —— 无论最后是化妆师手动点「标记完成」，
+// 还是定时结算把 confirmed 自动翻成 completed，这一条提醒都该发出去一次。
+// 之前这个函数不发提醒，于是自动完成的单顾客收不到消息、不知道可以评价了。
+const TPL_CUSTOMER_REVIEW = '7nqJY8IDCfQQ0n69vum6opcRmFlCV2XVEYJVpX0d8PY'; // 标记完成 → 顾客（提醒评价）
+
+// 订阅消息卡片点开后打开哪个版本：
+//   'trial'   测试期用这个 —— 体验成员随时能打开，长期有效
+//   'formal'  正式上线前改成这个 —— 线上普通顾客只认这个
+//   'developer' 只在开发者工具扫码时有效，几分钟就过期，点卡片会提示
+//              「开发版小程序已过期」，所以不要用它给顾客测。
+const MINI_STATE = 'trial';
+
+const PAGE_HOME = 'pages/index/index'; // 无前导斜杠，须与 app.json 注册项逐字一致
+
+// thing 类型上限 20 字，超了整条消息发不出去（47003）
+function clip(s, n) {
+  return String(s == null ? '' : s).slice(0, n);
+}
+
+// 服务日期带上这一单的开始时间（'2026-10-30 09:30:00'）。
+// 开始时间从预约文档自己那份快照（slotName）里切出来，不要抄一份硬编码的时间表 ——
+// 化妆师改过时段起止时间后 slotName 会被 adminSlotTimes 同步更新，这里自然跟着准。
+// 缺时段就退化成纯日期，仍然能发出去。
+//
+// ⚠️ 不要写整段区间（'2026-10-30 09:30-11:30'）—— 平台会判非法，整条消息 47003 发不出去。
+function fmtDateTime(date, slotName) {
+  const start = String(slotName || '').split('-')[0] || '';
+  if (!start) return String(date || '');
+  return `${date} ${start}:00`;
+}
+
+// 发订阅消息。永远不抛：43101（没订阅/额度用尽）是业务常态，不是异常。
+// 调用方可以直接 await，失败只会拿到 false —— 自动结算流程毫发无损。
+//
+// ⚠️ 这个「永不抛」是刻意的结构性保证：结算逻辑不能因为一条推送发不出去就把
+// 已经翻成 completed 的单当成失败（那样下个小时的定时器会再翻一次）。
+// 排障入口是下面这两条日志（控制台 → 云函数 → sweepOverdue → 日志 → 搜
+// subscribeMessage）。常见 code：43101 没订阅/额度用尽（最常见，不用管）、
+// 47003/47004/47006 模板字段对不上、40037 模板 ID 错、41030 page 路径错、
+// -501001 config.json 权限没生效（改完要等约 10 分钟缓存过期）。
+async function sendSubscribeMessage(opts) {
+  const { touser, templateId, page, data } = opts || {};
+  if (!touser || !templateId) return false;
+  try {
+    const res = await cloud.openapi.subscribeMessage.send({
+      touser,
+      templateId,
+      page,
+      miniprogramState: MINI_STATE,
+      data,
+    });
+    // 成功日志是故意留的：没有它，端到端验证时无法区分「没触发」和「触发但被拒」
+    console.log('subscribeMessage ok', templateId, JSON.stringify(res || {}));
+    return true;
+  } catch (err) {
+    const code = (err && (err.errCode || err.errcode)) || '';
+    const text = [err && err.errMsg, err && err.message].filter(Boolean).join(' | ');
+    console.warn('subscribeMessage 跳过', 'code=' + code, 'touser=' + touser, text);
+    return false;
+  }
+}
+// ================================================================
+
 // 按日期批量查时段文档（`in` 分批，避免元素个数超限）
 async function querySlotsByDate(dates) {
   const map = new Map();
@@ -142,6 +210,32 @@ async function autoExpireOverdue() {
       return 0;
     }
     if (updated === 0) return 0;
+
+    // 自动完成 → 提醒顾客评价（模板 D → 顾客）。
+    //
+    // 与 adminUpdateBooking 里「标记完成」那条路径发的是**同一个模板**，两条路径互斥：
+    // 状态更新用的是带 status 条件的 CAS，updated===0 说明状态已被别人（化妆师/顾客）
+    // 改过，这条直接跳过 —— 所以一单最多发出去一条提醒，正好对上顾客下单时那 1 次授权。
+    //
+    // 位置在 CAS 成功之后：不会出现「其实没完成却收到提醒」。
+    // sendSubscribeMessage 永不抛，发不出去也不会影响结算结果。
+    //
+    // 只在 completed 时发：pending → rejected 那条不需要顾客评价。
+    if (nextStatus === 'completed') {
+      await sendSubscribeMessage({
+        touser: b._openid,   // 预约文档自己记着顾客的 openid
+        templateId: TPL_CUSTOMER_REVIEW,
+        page: PAGE_HOME,
+        data: {
+          // key 与公众平台模板详情页一一对应，改模板要改这里
+          date6: { value: clip(fmtDateTime(b.date, b.slotName), 32) },  // 服务日期
+          thing3: { value: clip(b.styleName || '化妆预约', 20) },       // 服务项目
+          // 温馨提示只做提醒，不再捎带时段 —— 时段已经在服务日期里了，
+          // 重复一遍既挤占 thing 的 20 字上限，读者也用不上。
+          thing1: { value: clip('化妆完成，点击评价', 20) },
+        },
+      });
+    }
 
     const slotDoc = slotDocs.get(b.date);
     if (slotDoc) {

@@ -218,10 +218,10 @@ exports.main = async (event) => {
     // 顾客没授权（老单 / 当次点了拒绝）时发不出去（43101），业务毫发无损 ——
     // 那种单顾客只能自己刷首页才看到「评价」按钮。
     //
-    // ⚠️ 只有化妆师点「标记完成」按钮才走这里。sweepOverdue 定时把 confirmed
-    // 自动翻成 completed 的那条路径**不发**提醒（那个定时函数的 config.json 里
-    // "openapi": []，没给 subscribeMessage.send 权限），自动完成的单顾客
-    // 收不到提醒。
+    // ⚠️ 手动「标记完成」和 sweepOverdue 定时自动完成发的是**同一个模板**，
+    // 两条路径互斥：两边都用带 status 条件的 CAS 改状态，只有改成功的那一方
+    // 会发消息，所以一单最多发出去一条提醒，正好对上顾客下单时那 1 次授权。
+    // （sweepOverdue 的 config.json 因此也开了 subscribeMessage.send 权限。）
     if (rule.to === 'completed') {
       await sendSubscribeMessage({
         touser: booking._openid,   // 预约文档自己记着顾客的 openid
