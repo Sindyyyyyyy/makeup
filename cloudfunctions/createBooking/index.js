@@ -145,7 +145,7 @@ const MSG = {
 
 // ============ 订阅消息（按仓库约定各抄一份，不共享模块）============
 // 模板 ID 在 公众平台 → 订阅消息 → 我的模板 申请后填写。
-// 与 miniprogram/utils/notify.js 保持一致，改一处要改三处云函数。
+// 与 miniprogram/utils/notify.js 保持一致，改一处要改所有发消息的云函数。
 const TPL_ARTIST_NEW = 'OE7Sj4rWPKUfCvreIfadWG5r3SPAmxGjgGGhJt9WG4E';  // 顾客新预约 → 化妆师
 
 // 订阅消息卡片点开后打开哪个版本：

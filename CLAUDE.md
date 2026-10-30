@@ -227,6 +227,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 - **服务端是硬约束**：`submitReview` 只认 `cloud.getWXContext()` 里的 openid，归属校验 `doc._openid !== openid` 一律拒绝，**且只允许评价 `status === 'completed'` 的单**。前端的按钮只是第一层 —— `sweepOverdue` 可能刚把状态改过。
 - 一单一条评价：再次提交就是「修改」，服务端覆盖同一条记录并保留第一次的 `createTime`、刷新 `updateTime`。
 - `submitReview` 只回传 `{ content }`，**不回传时间戳** —— `db.serverDate()` 序列化回客户端会变成 `{$date: ...}`，客户端用不上；后台那边是从库里原样读的。
+- **两端各有一次通知**（详见「订阅消息」一节）：化妆师点「标记完成」→ 服务端 `adminUpdateBooking` 给顾客发「提醒评价」；顾客提交**首次**评价 → 服务端 `submitReview` 给每个 admin 发「评价完成」。改评价不再发消息（省额度）。所以 `submitReview` 需要 `config.json` 里的 `subscribeMessage.send` 权限。
 
 ### 调用次数：缓存与本地打补丁
 
@@ -267,36 +268,48 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 ### 订阅消息 (subscribe message)
 
-一次性订阅，三条链路：化妆师确认/拒绝 → 顾客，新预约 → 化妆师，顾客取消 → 化妆师。标记完成不通知。**长期订阅不可用**（仅公共服务类目开放），所以授权必须散落在真实手势上。
+一次性订阅，五条链路：化妆师确认/拒绝 → 顾客，新预约 → 化妆师，顾客取消 → 化妆师，标记完成 → 顾客（提醒评价），顾客评价 → 化妆师。**长期订阅不可用**（仅公共服务类目开放），所以授权必须散落在真实手势上。
 
 | 收件人 | 触发 | 模板 |
 |---|---|---|
 | 顾客 | `adminUpdateBooking` 的 `confirmed`/`rejected` | 化妆师通过／拒绝（`date2` 预约时间 / `thing3` 预约项目 / `phrase5` 预约结果 / `thing6` 温馨提示） |
+| 顾客 | `adminUpdateBooking` 的 `completed` | 提醒评价（`date6` 服务日期 / `thing3` 服务项目 / `thing1` 温馨提示） |
 | 化妆师 | `createBooking` 成功 | 顾客预约（`thing20` 预约人 / `time2` 预约时间 / `thing7` 预约项目 / `thing9` 温馨提示） |
 | 化妆师 | `cancelBooking` 成功 | 顾客取消预约（`name1` 姓名 / `time4` 原预约时间 / `thing2` 原预约项目 / `thing13` 温馨提醒） |
+| 化妆师 | `submitReview` 首次评价成功 | 评价完成（`thing3` 评价项目 / `thing2` 评价内容） |
 
-**三个模板都没有单独的「时段」字段，时段是搭在预约时间里的** —— `date`/`time` 两种类型都接受 `2026-10-20 09:30:00` 这种带时分的格式（平台示例即如此），所以「预约时间」一个字段就同时表达了日期和具体时段，不必再加字段。
+**「提醒评价」模板的 `date6` 装的是「日期 + 开始时间」** —— `fmtDateTime()` 拼成 `2026-10-30 09:30:00`（与 `date2`/`time2`/`time4` 同一写法，平台认）。`thing1` 是固定文案「化妆完成，点击评价」（9 字），**不再捎带时段** —— 时段已经在服务日期里了，重复一遍既挤占 `thing` 的 20 字上限，读者也用不上。**文案必须按 ≤20 字写死**：`clip()` 会无声地砍掉最后一个字，21 字会变成「期待评」。
 
-注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），整段塞进时间字段会被判非法，所以三个云函数都只取**开始**时间，拼成 `YYYY-MM-DD HH:mm:00`。开始时间的来源：`adminUpdateBooking` 和 `cancelBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，化妆师改时段起止时间时 `slotName` 会被 `adminSlotTimes` 同步更新，这里自动跟着准）；`createBooking` 从下单那一刻的**有效时间段**切（配置里的值，单日覆盖优先）。缺时段时退化成纯日期，消息仍能发出去。
+> ⚠️ **不要把整段时段区间塞进 `date`/`time` 字段。** `2026-10-30 09:30-11:30`（连字符）会被判非法 → **整条消息 47003 发不出去**（不是只丢时段），顾客连卡片都收不到。平台认可的区间写法是 `YYYY-MM-DD HH:mm:ss~YYYY-MM-DD HH:mm:ss`（分隔符 `~`，两端都带完整日期时间），但那在卡片上太长且要重复一遍日期，**统一只用开始时间**。
+
+**「评价完成」模板的 `thing2` 只吃 20 字，而评价正文最长 200 字** —— `submitReview` 里的 `clipReview()` 截成 19 字 + 一个 `…`，化妆师在通知里看到的是开头，完整内容在后台的「查看评价」里。
+
+**前三个模板都没有单独的「时段」字段，时段是搭在预约时间里的** —— `date`/`time` 两种类型都接受 `2026-10-20 09:30:00` 这种带时分的格式（平台示例即如此），所以「预约时间」一个字段就同时表达了日期和具体时段，不必再加字段。
+
+注意时段文档里存的是**区间**（`slotName` = `'09:30-11:30'`），连字符写法整段塞进 `date`/`time` 字段会被判非法，所以**四个模板都只取开始时间**，拼成 `YYYY-MM-DD HH:mm:00`（「提醒评价」的 `date6` 也是这个写法）。开始时间的来源：`adminUpdateBooking` 和 `cancelBooking` 从预约文档自带的 `booking.slotName` 切（用文档里的值而非另抄常量，化妆师改时段起止时间时 `slotName` 会被 `adminSlotTimes` 同步更新，这里自动跟着准）；`createBooking` 从下单那一刻的**有效时间段**切（配置里的值，单日覆盖优先）。缺时段时退化成纯日期，消息仍能发出去。
 
 **授权点**（`wx.requestSubscribeMessage` 必须由用户手势触发，放进 load/onShow/网络回调会报 `can only be invoked by user TAP action`）：
 
-- 顾客：`pages/index` 的 `onSaveInfo()` **第一行**，门控 `infoMode === 'confirm'`。不在 `doCreateBooking` 里请求 —— 那里已跨过一次 `await userProfile` 的异步边界，会丢手势上下文。也不在 `submitBooking` 里 —— 那里紧接着弹信息表，顾客可能放弃预约，授权就浪费了。
-- 化妆师：`adminPanel` 里独立的「开启提醒」按钮（B、C 同一个弹窗一次授权）。**不要**搭 `doAction` 的顺风车：那里刚弹过 `wx.showModal`，dismiss 动画未结束就压系统弹窗，iOS 有概率吞手势；且点「确认」问「取消通知」语义错配，用户会习惯性拒掉额度。
+- 顾客：`pages/index` 的 `onSaveInfo()` **第一行**，门控 `infoMode === 'confirm'`。一次请求**两个**模板（`TPL_CUSTOMER_RESULT` 预约结果通知 + `TPL_CUSTOMER_REVIEW` 提醒评价），一个弹窗各得 1 条额度。不在 `doCreateBooking` 里请求 —— 那里已跨过一次 `await userProfile` 的异步边界，会丢手势上下文。也不在 `submitBooking` 里 —— 那里紧接着弹信息表，顾客可能放弃预约，授权就浪费了。
+- 化妆师：`adminPanel` 里独立的「开启提醒」按钮，一次请求**三个**模板（`TPL_ARTIST_NEW` / `TPL_ARTIST_CANCELLED` / `TPL_ARTIST_REVIEW`）。**不要**搭 `doAction` 的顺风车：那里刚弹过 `wx.showModal`，dismiss 动画未结束就压系统弹窗，iOS 有概率吞手势；且点「确认」问「取消通知」语义错配，用户会习惯性拒掉额度。「标记完成」的流程一个字都不动 —— 提醒顾客评价的那条消息是在**服务端**发的，不依赖化妆师当场授权。
 
-**额度语义：1 次授权 = 1 条消息**，可累积，额度为 0 时发送返回 `43101`。顾客侧精确匹配——`ACTION_MAP` 里 `confirm`/`reject` 的 `from` 都只含 `pending`，确认后再拒绝会被状态机挡掉，一次预约最多触发一次模板2。化妆师点一次「开启」顶一条，所以按钮文案是「开启 / 再开启一次」。**多个 admin 时额度是各自独立的** —— 每台手机都要各自点过一次「开启提醒」才收得到，她没点过就只是她那个 `43101`。`notifyEnabled` 只是 UI 提示，**不是服务端状态**，服务端不查它。
+**额度语义：1 次授权 = 1 条消息**，可累积，额度为 0 时发送返回 `43101`。各模板的额度互相独立。顾客侧精确匹配——`ACTION_MAP` 里 `confirm`/`reject` 的 `from` 都只含 `pending`，确认后再拒绝会被状态机挡掉，一次预约最多触发一次模板2；「提醒评价」则是**每下一单 +1**（下单时一次授权两个模板）。化妆师点一次「开启」三个模板各顶一条，所以按钮文案是「开启 / 再开启一次」。**多个 admin 时额度是各自独立的** —— 每台手机都要各自点过一次「开启提醒」才收得到，她没点过就只是她那个 `43101`。`notifyEnabled` 只是 UI 提示，**不是服务端状态**，服务端不查它。
 
-**模板 ID 在三处云函数各抄一份，不共享模块** —— `miniprogram/utils/notify.js`（客户端）+ `createBooking` + `adminUpdateBooking` + `cancelBooking`（`miniprogram/utils` 不在云函数文件系统里，反之亦然；共享只能靠人工复制进每个部署目录，漏复制 = 加载期崩溃）。字段的 key（`thing20`/`time2`/`phrase5`/…）必须与公众平台模板详情页**逐字一致**，key 错了消息静默发不出去。`thing` 上限 20 字、`phrase` 纯中文且 ≤5 字，所以「已确认」「已拒绝」都能放进 `phrase5`。`thing6` 温馨提示按结果分派两条（确认「预约已确认，请准时到店」11 字 / 拒绝「化妆师临时有事，具体原因请与化妆师联系」19 字，都未触顶）；化妆师侧的 `thing9`/`thing13` 同理是固定文案。**都不要塞 `booking.remark`**（上限 500 字会撑爆 20）。
+**评价通知只发一次** —— `submitReview` 里 `prev` 为空（这一单此前没有评价）才发，改评价不再打扰化妆师，省额度。
 
-**`sendSubscribeMessage()` 永远不抛** —— 这是「通知失败不影响预约」的**结构性保证**，不是偷懒：三个云函数各自被一个大 try/catch 包着（`createBooking` 里那个 catch 还负责 `add()` 失败时回滚时段占用），helper 一旦被换成裸的 `cloud.openapi.subscribeMessage.send(...)`，发送失败就会冒泡进那个 catch，把一条**已成功的**预约报成「服务器错误」。调用方可以无脑 `await`。
+**模板 ID 每个在「客户端 `notify.js`」和「发它的那一个云函数」各抄一份，不共享模块** —— `miniprogram/utils` 不在云函数文件系统里，反之亦然；共享只能靠人工复制进每个部署目录，漏复制 = 加载期崩溃。现在发消息的云函数有四个：`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview`。字段的 key（`thing20`/`time2`/`phrase5`/`date6`/…）必须与公众平台模板详情页**逐字一致**，key 错了消息静默发不出去。`thing` 上限 20 字、`phrase` 纯中文且 ≤5 字，所以「已确认」「已拒绝」都能放进 `phrase5`。`thing6` 温馨提示按结果分派两条（确认「预约已确认，请准时到店」11 字 / 拒绝「化妆师临时有事，具体原因请与化妆师联系」19 字，都未触顶）；化妆师侧的 `thing9`/`thing13` 同理是固定文案。**都不要塞 `booking.remark`**（上限 500 字会撑爆 20）。
+
+**`sendSubscribeMessage()` 永远不抛** —— 这是「通知失败不影响预约」的**结构性保证**，不是偷懒：四个云函数各自被一个大 try/catch 包着（`createBooking` 里那个 catch 还负责 `add()` 失败时回滚时段占用，`submitReview` 里那个 catch 包着整条评价写入），helper 一旦被换成裸的 `cloud.openapi.subscribeMessage.send(...)`，发送失败就会冒泡进那个 catch，把一条**已成功的**预约报成「服务器错误」、或把一条**已经存进库**的评价报成「保存失败」。调用方可以无脑 `await`。
 
 化妆师 openid 由 `findArtistOpenids()` 实时查 `users.where({admin: true})` 得到，**不缓存** —— `adminLogout` 把 `admin` 置 false 后缓存副本会继续给她发消息。这个字段只在这里被服务端读取，绝不进 `userProfile` 的白名单或 `get` 响应；openid 绝不返回给客户端。
 
 **可以有多个 admin**：多个微信号都输过密码就会有多条 `admin: true`，**她们都要收到通知** —— 所以这里返回数组、**不能 `limit(1)`**（那会随机只通知其中一个，其中一人永远收不到）。`data` 只拼一次，在 `touser` 上分叉后用 `Promise.all` 并发发；因为 `sendSubscribeMessage` 永不抛，其中一人没授权（`43101`）不影响其他人收到。`limit(100)` 只是防呆，另做了 `_openid` 去重防止脏数据导致同一人收两条。
 
-**`MINI_STATE` 决定订阅消息卡片点开后打开哪个版本**，三个云函数各抄一份：测试期 `'trial'`（体验版，体验成员随时能打开）；**正式上线前必须改成 `'formal'` 并重新部署三个函数**，否则线上普通顾客打不开。**绝不要用 `'developer'` 给顾客测** —— 开发版只在开发者工具扫码时有效、几分钟就过期，点卡片会提示「开发版小程序已过期，请在开发者工具中重新扫码」，而这个报错与通知本身发没发出去毫无关系，极易误判成发送失败。
+**`MINI_STATE` 决定订阅消息卡片点开后打开哪个版本**，四个云函数各抄一份：测试期 `'trial'`（体验版，体验成员随时能打开）；**正式上线前必须改成 `'formal'` 并重新部署四个函数**，否则线上普通顾客打不开。**绝不要用 `'developer'` 给顾客测** —— 开发版只在开发者工具扫码时有效、几分钟就过期，点卡片会提示「开发版小程序已过期，请在开发者工具中重新扫码」，而这个报错与通知本身发没发出去毫无关系，极易误判成发送失败。
 
-三个云函数目录各有一份 `config.json` 声明 `permissions.openapi: ["subscribeMessage.send"]`。**`config.json` 只在上传时被读取**（必须选「上传并部署：云端安装依赖」），且权限有**约 10 分钟服务端缓存** —— 改完立刻测报「无权限」是正常的，别在这段时间里 debug。
+四个云函数目录各有一份 `config.json` 声明 `permissions.openapi: ["subscribeMessage.send"]`（`createBooking` / `adminUpdateBooking` / `cancelBooking` / `submitReview`）。**`config.json` 只在上传时被读取**（必须选「上传并部署：云端安装依赖」），且权限有**约 10 分钟服务端缓存** —— 改完立刻测报「无权限」是正常的，别在这段时间里 debug。
+
+**已知限制：`sweepOverdue` 定时把 `confirmed` 自动翻成 `completed` 的那条路径不发提醒** —— 需求挂在「标记完成」按钮上，而且那个定时函数的 `config.json` 里 `"openapi": []`，没给 `subscribeMessage.send` 权限。自动完成的单，顾客只能自己刷首页才看到「评价」按钮。
 
 **排障入口：云开发控制台 → 云函数 → 日志 → 搜 `subscribeMessage`。** 用户在公众平台改了模板是头号故障源（症状是通知全收不到但预约功能完全正常，且**永远不会暴露给用户**，只出现在日志里）：删模板 → `40037`；改字段名 → key 变了 → `47003`；加字段 → 没传 → `47004`（**整条发不出去**）；`code=43101` 则是额度用尽/没授权，业务正常不用改代码；`-501001` 是 config.json 权限没生效。DevTools 模拟器不弹真授权窗，控制台「云端测试」调 `subscribeMessage.send` 返回 `-501001` 是**预期的假阳性**（不带小程序云调用上下文）——端到端只能真机验证。
 

@@ -2,8 +2,9 @@
 //
 // 模板 ID 来自 公众平台 → 小程序 → 订阅消息 → 我的模板。
 // 云函数侧各抄一份同样的常量（按仓库约定不共享模块，miniprogram/utils 也不在
-// 云函数的文件系统里），所以改模板 ID 要同时改三处云函数：
-// createBooking / adminUpdateBooking / cancelBooking。
+// 云函数的文件系统里），所以**每个模板 ID 在「本文件」和「发这条消息的那个云函数」
+// 各抄一份**。现在发消息的云函数有四个：
+// createBooking / adminUpdateBooking / cancelBooking / submitReview。
 //
 // 注意：改模板字段时必须同步改各云函数 data 里的 key —— key 是平台分配的，
 // 改字段名/加减字段而不同步代码，消息会静默发不出去（47003/47004），
@@ -11,6 +12,8 @@
 const TPL_CUSTOMER_RESULT = 'L-Esvcae2XxxhLhogHY0dP5d_NUCpOw4rEcBNZB4u3A';  // 化妆师确认/拒绝 → 顾客
 const TPL_ARTIST_NEW = 'OE7Sj4rWPKUfCvreIfadWG5r3SPAmxGjgGGhJt9WG4E';        // 顾客新预约 → 化妆师
 const TPL_ARTIST_CANCELLED = 'fBtVJqD7Ur_ERJ7y78L46MRXtX7n4R_SS4448hvqPIE';  // 顾客取消 → 化妆师
+const TPL_CUSTOMER_REVIEW = '7nqJY8IDCfQQ0n69vum6opcRmFlCV2XVEYJVpX0d8PY';  // 标记完成 → 顾客（提醒评价）
+const TPL_ARTIST_REVIEW = 'ijQASAXFJ3se01cPLe1yQypcQcPJg7ea68xxLD_WcV0';    // 顾客评价 → 化妆师
 
 // 通知点开后跳回首页。tabBar 首页 100% 存在于任何已发布版本，天然免疫 41030。
 // 路径不带前导斜杠，且必须与 app.json 的注册项逐字一致。
@@ -30,7 +33,7 @@ const PAGE_HOME = 'pages/index/index';
 function requestSubscribe(tmplIds) {
   const ids = (tmplIds || []).filter(Boolean);
   // 某个模板 ID 暂时为空（还没申请/被删）时跳过它，其余照常弹。
-  // 这样即使三个模板没配齐，预约流程也不受影响。
+  // 这样即使几个模板没配齐，预约流程也不受影响。
   if (!ids.length) return Promise.resolve(null);
   return new Promise((resolve) => {
     wx.requestSubscribeMessage({
@@ -48,6 +51,8 @@ module.exports = {
   TPL_CUSTOMER_RESULT,
   TPL_ARTIST_NEW,
   TPL_ARTIST_CANCELLED,
+  TPL_CUSTOMER_REVIEW,
+  TPL_ARTIST_REVIEW,
   PAGE_HOME,
   requestSubscribe,
 };

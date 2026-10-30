@@ -7,7 +7,7 @@ const {
 } = require('../../utils/slots.js');
 const { emptyForm, toForm, missingFields, sameForm, sameList, fetchedAt, markFetched, clearFetched } = require('../../utils/profileInfo');
 const { currentMode, syncTabBar, setMode } = require('../../utils/role.js');
-const { TPL_CUSTOMER_RESULT, requestSubscribe } = require('../../utils/notify.js');
+const { TPL_CUSTOMER_RESULT, TPL_CUSTOMER_REVIEW, requestSubscribe } = require('../../utils/notify.js');
 const { getLang, getDict, t, listJoin } = require('../../utils/i18n.js');
 
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
@@ -443,8 +443,12 @@ Page({
     // 必须在第一个 await 之前取出来：组件里的数组可能在 await 期间被重置。
     const styleRefPhotos = (e.detail.styleRefPhotos || []).slice();
 
-    // 下单前最后一个手势在这里：先把「预约结果通知」的订阅额度拿到手，
-    // 保证 createBooking 之后化妆师确认/拒绝时能发出去。
+    // 下单前最后一个手势在这里：把订阅额度拿到手，保证
+    //   ① createBooking 之后化妆师确认/拒绝时能发出去（预约结果通知）；
+    //   ② 化妆师点「标记完成」时能提醒她来评价（提醒评价）。
+    // 两个模板一次授权，各得 1 条额度 —— 额度是各自独立的，不互相消耗。
+    // ② 这一条尤其不能省：一次性订阅没有额度就发不出去，化妆师标记完成后
+    // 顾客收不到提醒，只能自己刷首页才看到「评价」按钮。
     //
     // 为什么不在 doCreateBooking 里请求：那里已经在 onSaveInfo 里 await 过
     // userProfile，跨了一次真实异步边界，部分基础库上会丢失手势上下文报
@@ -455,7 +459,7 @@ Page({
     // 的保存场景（infoMode='view'），那条路只是保存资料，不该被问订阅。
     // 模板 ID 为空时 requestSubscribe 直接 resolve，静默跳过。
     if (this.data.infoMode === 'confirm') {
-      await requestSubscribe([TPL_CUSTOMER_RESULT]);
+      await requestSubscribe([TPL_CUSTOMER_RESULT, TPL_CUSTOMER_REVIEW]);
     }
 
     const form = e.detail.info || {};

@@ -7,7 +7,7 @@
 // 调本组件的 loadBookings()/refresh()。
 const { SLOT_NAME_MAP, STATUS_TEXT } = require('../../utils/slots.js');
 const { isLoggedIn, getToken, clearAdmin, refreshAdminToken } = require('../../utils/role.js');
-const { TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED, requestSubscribe } = require('../../utils/notify.js');
+const { TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED, TPL_ARTIST_REVIEW, requestSubscribe } = require('../../utils/notify.js');
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -361,17 +361,25 @@ Component({
     // 弹窗内层用 catchtap 挡住冒泡，否则点弹窗里的内容会顺手把弹窗关了
     noop() {},
 
-    // 订阅消息：点一次 +1 条「新预约提醒」额度（两个模板在同一个弹窗里一次授权，
-    // tmplIds 上限 3 个，不需要分两次打扰）。
+    // 订阅消息：点一次 +1 条额度（三个模板在同一个弹窗里一次授权，
+    // tmplIds 上限 3 个，正好满，不需要分两次打扰）。
     //
     // 为什么用显式按钮，而不是搭 doAction 的顺风车：
     //   ① doAction 第一件事就是 wx.showModal，它的 dismiss 动画还没结束就压上一个
     //      系统订阅弹窗，iOS 上有概率被吞掉手势直接 fail；
     //   ② 点「确认」却问「预约取消通知」语义对不上，用户会习惯性点拒绝，把额度拒掉；
     //   ③ 订阅失败容易被下面 doAction 的 toast 逻辑混进「操作失败」分支。
+    //
+    // 三个模板各管一件事，额度各自独立：
+    //   TPL_ARTIST_NEW      有人下单 → 通知我
+    //   TPL_ARTIST_CANCELLED 有人取消 → 通知我
+    //   TPL_ARTIST_REVIEW    有人评价 → 通知我（这一条是「顾客评价了」的唯一起源，
+    //                         顾客提交评价时服务端靠它把消息发到我这儿）
     async enableNotify() {
-      const res = await requestSubscribe([TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED]);
-      const accepted = !!(res && res[TPL_ARTIST_NEW] === 'accept');
+      const ids = [TPL_ARTIST_NEW, TPL_ARTIST_CANCELLED, TPL_ARTIST_REVIEW];
+      const res = await requestSubscribe(ids);
+      // 只要有一个模板被允许就算开启了 —— 用户可以只允许其中一部分。
+      const accepted = !!(res && ids.some((id) => res[id] === 'accept'));
       if (!accepted) {
         // 拒绝不影响后台任何功能，如实说明但不要表现得像故障
         return wx.showToast({ title: '未开启通知，不影响后台使用', icon: 'none' });

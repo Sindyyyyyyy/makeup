@@ -39,8 +39,9 @@ function verifyAdmin(event, context) {
 
 // ============ 订阅消息（按仓库约定各抄一份，不共享模块）============
 // 模板 ID 在 公众平台 → 订阅消息 → 我的模板 申请后填写。
-// 与 miniprogram/utils/notify.js 保持一致，改一处要改三处云函数。
+// 与 miniprogram/utils/notify.js 保持一致，改一处要改所有发消息的云函数。
 const TPL_CUSTOMER_RESULT = 'L-Esvcae2XxxhLhogHY0dP5d_NUCpOw4rEcBNZB4u3A';  // 确认/拒绝 → 顾客
+const TPL_CUSTOMER_REVIEW = '7nqJY8IDCfQQ0n69vum6opcRmFlCV2XVEYJVpX0d8PY'; // 标记完成 → 顾客（提醒评价）
 
 // 联调期填 'developer'（走体验版），上线前改成 'formal'。
 // 用 'formal' 时 page 必须是已发布版本里存在的页面，否则 41030。
@@ -58,11 +59,18 @@ function clip(s, n) {
   return String(s == null ? '' : s).slice(0, n);
 }
 
-// date2 字段虽然 type 是 date，但微信接受 '2026-10-20 09:30:00' 这种带时分的格式，
-// 所以顾客的确认/拒绝通知里能带上具体时段，不用另加一个「预约时段」字段。
+// date2 / date6 都是 date 类型字段：微信接受 '2026-10-20 09:30:00' 这种带时分的
+// 格式，所以「预约时间」「服务日期」一个字段就同时表达了日期和具体时段，
+// 不用另加一个「时段」字段。
 // 时段从预约文档自带的 slotName（'09:30-11:30'）里切出开始时间 —— 用文档里的值
 // 而不是另抄一份 SLOT_NAMES，这样时段定义改了这里自动跟着变；slotName 缺失时
 // 退化成纯日期，仍然能发出去。
+//
+// ⚠️ **只取开始时间，不要把整段区间塞进去**：
+//   '2026-10-30 09:30-11:30'（连字符）会被判非法 → 整条消息 47003 发不出去，
+//   顾客不是「看不到时段」，而是连卡片都收不到。
+//   平台认可的区间写法是 'YYYY-MM-DD HH:mm:ss~YYYY-MM-DD HH:mm:ss'（分隔符 '~'，
+//   两端都带完整日期时间），但那在卡片上很长，本次统一用开始时间。
 function fmtDateTime(date, slotName) {
   const start = String(slotName || '').split('-')[0] || '';
   if (!start) return String(date || '');
@@ -165,8 +173,7 @@ exports.main = async (event) => {
       }
     }
 
-    // 预约结果通知（模板 A → 顾客）：只有「确认」和「拒绝」要通知，
-    // 「标记完成」是化妆师自己的收尾动作，不打扰顾客。
+    // 预约结果通知（模板 A → 顾客）：只有「确认」和「拒绝」要通知。
     //
     // 位置讲究：
     //   · 必须在上面的 CAS 更新之后 —— 更新失败时那条 return 已经返回了，
@@ -197,6 +204,41 @@ exports.main = async (event) => {
               ? clip('预约已确认，请准时到店', 20)
               : clip('化妆师临时有事，具体原因请与化妆师联系', 20),
           },
+        },
+      });
+    }
+
+    // 「标记完成」提醒顾客评价（模板 D → 顾客）。
+    //
+    // 位置与上面那条一致：CAS 更新成功之后才发，所以不会出现「其实没完成却收到
+    // 提醒」。sendSubscribeMessage 永不抛，发送失败不会掉进下面那个大 catch，
+    // 化妆师看到的仍然是「已标记完成」。
+    //
+    // 额度：顾客下单时一次授权拿到这 1 条，一次预约对应一条提醒，正好对上。
+    // 顾客没授权（老单 / 当次点了拒绝）时发不出去（43101），业务毫发无损 ——
+    // 那种单顾客只能自己刷首页才看到「评价」按钮。
+    //
+    // ⚠️ 只有化妆师点「标记完成」按钮才走这里。sweepOverdue 定时把 confirmed
+    // 自动翻成 completed 的那条路径**不发**提醒（那个定时函数的 config.json 里
+    // "openapi": []，没给 subscribeMessage.send 权限），自动完成的单顾客
+    // 收不到提醒。
+    if (rule.to === 'completed') {
+      await sendSubscribeMessage({
+        touser: booking._openid,   // 预约文档自己记着顾客的 openid
+        templateId: TPL_CUSTOMER_REVIEW,
+        page: PAGE_HOME,
+        data: {
+          // key 与公众平台模板详情页一一对应，改模板要改这里
+          //
+          // 服务日期带上这一单的开始时间（'2026-10-30 09:30:00'），
+          // 顾客一眼看到是哪一场；跟 date2/time2/time4 同一写法，平台认。
+          // 不要写整段区间（'2026-10-30 09:30-11:30'）—— 那会被判非法，
+          // 整条消息 47003 发不出去。详见上面 fmtDateTime 的注释。
+          date6: { value: clip(fmtDateTime(booking.date, booking.slotName), 32) },  // 服务日期
+          thing3: { value: clip(booking.styleName || '化妆预约', 20) },  // 服务项目
+          // 温馨提示只做提醒，不再捎带时段 —— 时段已经在服务日期里了，
+          // 重复一遍既挤占 thing 的 20 字上限，读者也用不上。
+          thing1: { value: clip('化妆完成，点击评价', 20) },
         },
       });
     }
