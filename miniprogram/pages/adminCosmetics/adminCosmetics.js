@@ -50,6 +50,16 @@ const LEVEL_RANK = { expired: 0, soon3: 1, soon6: 2, ok: 3, none: 4 };
 
 const GROUP_UNLABELED = '未标注妆造';
 
+// 「操作说明」的正文。整段存成一个用 \n 连起来的字符串，而不是逐条 <view>：
+// <text> 组件会把 \n 渲染成换行，这样 -webkit-line-clamp 才能精确地按「行」
+// 截断（拆成多个子节点时它们会变成 flex item，截断粒度会变成「条」而不是「行」）。
+const TIPS_TEXT = [
+  '· 填「生产日期 + 保质期」自动算到期日；填「到期日」加生产日期则反推保质期',
+  '· 已过期和临期的会排在最前面，用完的自动沉到最底部并变灰',
+  '· 适用妆造来自「妆容管理」的妆造库，不打标也可以，筛不出来而已',
+  '· 筛选、搜索、分组都在本机算，随便点，不消耗云函数次数',
+].join('\n');
+
 // toast 会截断长文本，这类环境/配置类报错改用弹窗完整展示
 function showResult(res, okFallback) {
   const message = (res && res.message) || okFallback;
@@ -143,6 +153,9 @@ Page({
     form: emptyForm(),
     formHint: '',
     formStyles: [],     // [{ name, active }]，多选 chip 的渲染形状
+    // 底部「操作说明」默认收起（只露两行），点标题右边的三角展开/收起
+    tipsExpanded: false,
+    tipsText: TIPS_TEXT,
   },
 
   onLoad() {
@@ -577,6 +590,11 @@ Page({
   patchLocalList(next) {
     cosmeticsCache.saveCosmetics(next);
     this.setData({ list: next }, () => this.applyView());
+  },
+
+  // 「操作说明」展开/收起。纯本地状态，不发任何云函数调用。
+  toggleTips() {
+    this.setData({ tipsExpanded: !this.data.tipsExpanded });
   },
 
   goBack() {

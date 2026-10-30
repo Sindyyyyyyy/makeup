@@ -11,6 +11,19 @@ const styleCache = require('../../utils/styleCache.js');
 
 const TOKEN_KEY = 'admin_token';
 
+// 「操作说明」的正文。整段存成一个用 \n 连起来的字符串，而不是逐条 <view>：
+// <text> 组件会把 \n 渲染成换行，这样 -webkit-line-clamp 才能精确地按「行」
+// 截断（拆成多个子节点时它们会变成 flex item，截断粒度会变成「条」而不是「行」）。
+const TIPS_TEXT = [
+  '· 点击格子可开放/关闭该时段，并添加该时段可画的妆造与价格',
+  '· 开放后顾客即可预约该时段，并在下单时选择妆造',
+  '· 已有预约的时段无法关闭，请先在预约列表中处理',
+  '· 已完成的时段默认不可点击，妆造与状态均已锁定',
+  '· 今天以前的时段除「已完成」外一律显示「时段已过」，不再接受修改',
+  '· 当天已过结束时刻且无人预约的时段（如 11 点后的上午）也显示「时段已过」；已预约/已完成的仍保留原状态，方便查看和处理',
+  '· 格子右上角的 ⏱ 表示这一天的这个时段被单独改过时间，点开弹窗点「改这天」可以调；每天的默认起止时间在「时间管理」里改',
+].join('\n');
+
 // 网格单元格的统一形状。buildGrid（整周拉取）和 patchCell（改完一处就地打补丁）
 // 共用这个函数，两条路径产出的结构必须完全一致，否则打补丁的格子会和别的格子
 // 在视图层长得不一样。
@@ -90,6 +103,9 @@ Component({
     userInfoHint: '',
     // 「想画的妆容照片」的 https 临时链接（存在这一单上，不在顾客资料上）
     userStyleRefUrls: [],
+    // 底部「操作说明」默认收起（只露两行），点标题右边的三角展开/收起
+    tipsExpanded: false,
+    tipsText: TIPS_TEXT,
   },
 
   lifetimes: {
@@ -253,6 +269,12 @@ Component({
       const dIdx = this.data.weekDates.findIndex(d => d.date === date);
       if (sIdx < 0 || dIdx < 0) return null;
       return this.data.grid[sIdx][dIdx] || null;
+    },
+
+    // ============ 操作说明（可折叠）============
+    // 点标题行右边的三角展开/收起。纯本地状态，不发任何云函数调用。
+    toggleTips() {
+      this.setData({ tipsExpanded: !this.data.tipsExpanded });
     },
 
     // ============ 妆造编辑 ============

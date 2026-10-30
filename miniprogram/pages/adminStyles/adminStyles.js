@@ -4,6 +4,15 @@ const styleCache = require('../../utils/styleCache.js');
 
 const TOKEN_KEY = 'admin_token';
 
+// 「操作说明」的正文。整段存成一个用 \n 连起来的字符串，而不是逐条 <view>：
+// <text> 组件会把 \n 渲染成换行，这样 -webkit-line-clamp 才能精确地按「行」
+// 截断（拆成多个子节点时它们会变成 flex item，截断粒度会变成「条」而不是「行」）。
+const TIPS_TEXT = [
+  '· 这里维护的妆造会作为「时段管理」开放时段时的可选按钮',
+  '· 库里有 n 个妆造，弹窗里就有 n 个按钮，点击即可加入该时段',
+  '· 改名或改价只影响之后新添加；已开放时段里已添加的妆造需在该时段单独修改',
+].join('\n');
+
 // 本地打补丁时的排序口径：主键是 sort（云端 listStyles 也是 orderBy('sort','asc')），
   // sort 相同时按 _id 兜底，保证同一份列表每次渲染顺序一致，不会看着像在乱跳。
 function sortStyles(list) {
@@ -33,6 +42,9 @@ Page({
     saving: false,
     editingId: '',      // 正在编辑的妆造 _id，空字符串表示新增
     form: { name: '', price: '' },
+    // 底部「操作说明」默认收起（只露两行），点标题右边的三角展开/收起
+    tipsExpanded: false,
+    tipsText: TIPS_TEXT,
   },
 
   onLoad() {
@@ -207,6 +219,11 @@ Page({
       console.error(e);
       wx.showToast({ title: '删除失败', icon: 'none' });
     }
+  },
+
+  // 「操作说明」展开/收起。纯本地状态，不发任何云函数调用。
+  toggleTips() {
+    this.setData({ tipsExpanded: !this.data.tipsExpanded });
   },
 
   goBack() {

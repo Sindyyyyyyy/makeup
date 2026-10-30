@@ -47,10 +47,14 @@
     </view>
 
     <view class="tips">
-      <view class="tips-title">💡 操作说明</view>
-      <view class="tips-item">· 这里维护的妆造会作为「时段管理」开放时段时的可选按钮</view>
-      <view class="tips-item">· 库里有 n 个妆造，弹窗里就有 n 个按钮，点击即可加入该时段</view>
-      <view class="tips-item">· 改名或改价只影响之后新添加；已开放时段里已添加的妆造需在该时段单独修改</view>
+      <view class="tips-head" bindtap="toggleTips">
+        <view class="tips-title">💡 操作说明</view>
+        <view class="tips-toggle">
+          <text class="tips-toggle-text">{{tipsExpanded ? '收起' : '展开'}}</text>
+          <text class="tips-arrow">{{tipsExpanded ? '▲' : '▼'}}</text>
+        </view>
+      </view>
+      <text class="tips-text {{tipsExpanded ? 'expanded' : 'collapsed'}}">{{tipsText}}</text>
     </view>
   </block>
 </view>

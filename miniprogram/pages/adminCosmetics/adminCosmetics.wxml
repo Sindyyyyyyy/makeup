@@ -237,11 +237,14 @@
     </view>
 
     <view class="tips">
-      <view class="tips-title">💡 操作说明</view>
-      <view class="tips-item">· 填「生产日期 + 保质期」自动算到期日；填「到期日」加生产日期则反推保质期</view>
-      <view class="tips-item">· 已过期和临期的会排在最前面，用完的自动沉到最底部并变灰</view>
-      <view class="tips-item">· 适用妆造来自「妆容管理」的妆造库，不打标也可以，筛不出来而已</view>
-      <view class="tips-item">· 筛选、搜索、分组都在本机算，随便点，不消耗云函数次数</view>
+      <view class="tips-head" bindtap="toggleTips">
+        <view class="tips-title">💡 操作说明</view>
+        <view class="tips-toggle">
+          <text class="tips-toggle-text">{{tipsExpanded ? '收起' : '展开'}}</text>
+          <text class="tips-arrow">{{tipsExpanded ? '▲' : '▼'}}</text>
+        </view>
+      </view>
+      <text class="tips-text {{tipsExpanded ? 'expanded' : 'collapsed'}}">{{tipsText}}</text>
     </view>
   </block>
 </view>

@@ -55,16 +55,18 @@
     <view wx:if="{{loading}}" class="loading-tip">加载中…</view>
   </view>
 
-  <!-- 说明（后台首页显示） -->
+  <!-- 说明（后台首页显示）。默认收起只露两行，点标题右边的三角展开/再点收起。
+       正文整段是一个 <text>（用 \n 换行），-webkit-line-clamp 才能按「行」截断；
+       拆成多个子 view 的话每个子节点会各占一个 flex item，截断粒度就变成「条」了。 -->
   <view wx:if="{{showTips}}" class="tips">
-    <view class="tips-title">💡 操作说明</view>
-    <view class="tips-item">· 点击格子可开放/关闭该时段，并添加该时段可画的妆造与价格</view>
-    <view class="tips-item">· 开放后顾客即可预约该时段，并在下单时选择妆造</view>
-    <view class="tips-item">· 已有预约的时段无法关闭，请先在预约列表中处理</view>
-    <view class="tips-item">· 已完成的时段默认不可点击，妆造与状态均已锁定</view>
-    <view class="tips-item">· 今天以前的时段除「已完成」外一律显示「时段已过」，不再接受修改</view>
-    <view class="tips-item">· 当天已过结束时刻且无人预约的时段（如 11 点后的上午）也显示「时段已过」；已预约/已完成的仍保留原状态，方便查看和处理</view>
-    <view class="tips-item">· 格子右上角的 ⏱ 表示这一天的这个时段被单独改过时间，点开弹窗点「改这天」可以调；每天的默认起止时间在「时间管理」里改</view>
+    <view class="tips-head" bindtap="toggleTips">
+      <view class="tips-title">💡 操作说明</view>
+      <view class="tips-toggle">
+        <text class="tips-toggle-text">{{tipsExpanded ? '收起' : '展开'}}</text>
+        <text class="tips-arrow">{{tipsExpanded ? '▲' : '▼'}}</text>
+      </view>
+    </view>
+    <text class="tips-text {{tipsExpanded ? 'expanded' : 'collapsed'}}">{{tipsText}}</text>
   </view>
 </view>
 

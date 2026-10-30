@@ -489,22 +489,57 @@
   border: none;
 }
 
-/* 说明 */
+/* 说明。默认收起只露两行（-webkit-line-clamp），点标题右边的三角展开。 */
 .tips {
   background: #FFFFFF;
   border-radius: 24rpx;
   padding: 24rpx;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
 }
+.tips-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
 .tips-title {
   font-size: 28rpx;
   font-weight: 600;
   color: #C95B7C;
-  margin-bottom: 12rpx;
 }
-.tips-item {
+.tips-toggle {
+  display: flex;
+  align-items: center;
+  padding: 4rpx 12rpx;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 24rpx;
+}
+.tips-toggle-text {
+  font-size: 22rpx;
+  color: #C95B7C;
+  margin-right: 6rpx;
+}
+.tips-arrow {
+  font-size: 22rpx;
+  color: #C95B7C;
+  line-height: 1;
+}
+/* 正文：<text> 里的 \n 会渲染成换行，所以整段是一串文本行，
+   line-clamp 按行截断（收起时只露两行并带省略号）。
+   展开时改成 display:block 而不是 line-clamp:unset —— 各端对
+   line-clamp 关键字的支持不一致，切 display 最稳。 */
+.tips-text {
   font-size: 24rpx;
   color: #666;
-  margin-top: 8rpx;
   line-height: 1.6;
+  white-space: pre-wrap;
+}
+.tips-text.collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.tips-text.expanded {
+  display: block;
 }

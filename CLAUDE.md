@@ -72,6 +72,16 @@ There is no custom component other than `components/infoForm`, `components/admin
 - `info-form` 由组件自己的 `.json` 注册（弹窗需要）。
 - 格子右上角的 `⏱` 角标表示「这一天的这个时段被单独改过时间」，具体时间看弹窗标题。
 
+### 操作说明（可折叠的「说明」卡片）
+
+后台三处都有「💡 操作说明」卡片（`scheduleGrid` 的 `show-tips`、妆容管理页、化妆品管理页），**默认收起只露两行**，点标题行右边的三角展开、再点收起。展开状态是纯本地 `data.tipsExpanded`，不发任何云函数调用。
+
+三条约定：
+
+1. **正文整段存在 `data.tipsText` 里，是一个用 `\n` 连起来的字符串**，不是一个数组。`<text>` 组件会把 `\n` 渲染成换行，这样 `-webkit-line-clamp: 2` 才能精确地按「行」截断；拆成多个子 `<view>` 的话每个子节点会各占一个 flex item，截断粒度会变成「条」而不是「行」（而「条」的条数不等于「行」——一条可能折成两行）。想改文案就改那个数组。
+2. **展开态用 `display: block` 切换，不要写 `-webkit-line-clamp: unset`** —— 各端对这个关键字的支持不一致，切 `display` 最稳。收起是 `.collapsed`（`-webkit-box` + `-webkit-line-clamp: 2` + `overflow: hidden`），展开是 `.expanded`（`display: block`）。
+3. **「展开/收起」和三角方向都由 `tipsExpanded` 这一个布尔量驱动**（`{{tipsExpanded ? '收起' : '展开'}}`、`{{tipsExpanded ? '▲' : '▼'}}`），不要引入第二份状态。这三处都在后台、不参与 i18n，正文文案可以直接写中文。三角用 `▼`/`▲` 字符，跟项目里已有的 `◀ ▶ ‹ ›` 一致；不要为了好看去用图片或图标字体（会多一个资源依赖）。
+
 ### Cloud database collections
 
 - `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed). **另有一篇 `_id='slot_times'` 的配置文档**（时段起止时间，见「时段时间是数据」一节）——它没有 `date` 字段，所以按日期查时段表的所有查询都不会命中它；`adminListSlots` 不带日期区间时会把没有 `date` 的文档滤掉。
