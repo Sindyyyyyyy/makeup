@@ -239,6 +239,24 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 - `submitReview` 只回传 `{ content }`，**不回传时间戳** —— `db.serverDate()` 序列化回客户端会变成 `{$date: ...}`，客户端用不上；后台那边是从库里原样读的。
 - **两端各有一次通知**（详见「订阅消息」一节）：化妆师点「标记完成」→ 服务端 `adminUpdateBooking` 给顾客发「提醒评价」；顾客提交**首次**评价 → 服务端 `submitReview` 给每个 admin 发「评价完成」。改评价不再发消息（省额度）。所以 `submitReview` 需要 `config.json` 里的 `subscribeMessage.send` 权限。
 
+### 化妆注意事项图（两个入口，同一个弹窗）
+
+图放在云存储，云函数 `getNoticeImage` 用 admin SDK 换 https 临时链接下发（桶保持「仅创建者可读写」，`cloud://` 直链顾客端会一片空白 —— 同素颜照那个坑）。**顾客端有两个入口，共用 `pages/index` 的一个弹窗**：
+
+| 入口 | 触发 | 标题 |
+|---|---|---|
+| 刚预约成功 | `doCreateBooking` → `openNotice(true)` | 预约成功 |
+| 预约卡片上的「注意事项」按钮 | `showNoticeTips()` → `openNotice(false)` | 化妆注意事项 |
+
+- 第二个入口是补救用的：预约完那一下顾客没长按保存，之后就找不到了。「注意事项」按钮放在卡片上 **「详细信息」左边**，和「详细信息」「取消预约」同一行（只在 pending/confirmed 的卡片上出现 —— 注意事项是「去之前看」的东西，已完成的单没有意义）。
+- 标题用 `data.noticeSuccess` 这一个布尔量切换，**不要**为两个入口各弹一个弹窗，也不要把标题写死在 WXML 里。
+- 弹窗是三态：`noticeLoading`（转圈）/ `noticeImg`（正常）/ `noticeError`（换链接失败 → 包内备用图 + 「重新加载」按钮）。
+- **只有缓存里那份链接可以直接塞给 `<image>`**：缓存 TTL（90 分钟）比临时链接寿命（约 2 小时）短，所以缓存命中的一定还没过期，零云函数调用。
+- ⚠️ **绝对不要回退到 `this.data.noticeImg`**。页面实例在后台活过 2 小时后，data 里那份早已过期，回退过去就是拿失效链接渲染 —— 线上踩过：顾客点「注意事项」出来一张白图，报 `Failed to load image ... net::OK`（COS 对过期签名返回 XML 错误页，不是图片）。缓存没命中就**留空 + 转圈**，等新链接。
+- `<image binderror>` 是自愈入口：`onNoticeImageError()` 自动换一个链接重试**一次**，再失败退回备用图 + 手动重试，绝不自动重试成死循环。
+- 长按保存靠 `<image show-menu-by-longpress>`，**只有 https 临时链接生效**，包内备用图 `/images/notice.jpg`（1080×1440，能看）长按不出菜单 —— 所以备用图只是「网络挂了也让她看得到」，不是终态。
+- 换语言时 `applyLang()` 要把 `noticeImg` 清空：data 里那个链接指向的是**上一语言**的图，不清会先闪一张中文图。
+
 ### 调用次数：缓存与本地打补丁
 
 免费额度每月 20 万次，不是随便花的。原则：**能本地改就别重拉，能并行就别串行；只有低风险数据才进缓存。**

@@ -118,6 +118,9 @@
       <view wx:if="{{item.styleName}}" class="bd-info">{{L.index.labelStyle}}{{item.styleName}} · ¥{{item.stylePrice}}</view>
       <view wx:if="{{item.remark}}" class="bd-note">{{L.index.labelRemark}}{{item.remark}}</view>
       <view wx:if="{{item.status === 'pending' || item.status === 'confirmed'}}" class="bd-actions">
+        <!-- 「注意事项」放在「详细信息」左边：顾客下单后那一下没长按保存图，
+             还能从这张卡片里把注意事项图再弹出来一次 -->
+        <button class="btn-notice" size="mini" bindtap="showNoticeTips">{{L.index.noticeBtn}}</button>
         <button class="btn-detail" size="mini" bindtap="openInfoDetail" data-id="{{item._id}}">{{L.index.detail}}</button>
         <button class="btn-cancel" size="mini" bindtap="cancelBooking" data-id="{{item._id}}">{{L.index.cancelBooking}}</button>
       </view>
@@ -220,15 +223,27 @@
 <!-- 预约成功 · 化妆注意事项
      show-menu-by-longpress 是长按保存到相册的关键：只有网络图片（云函数换来的 https
      临时链接）才生效，打包在包内的兜底图长按不会有菜单。scroll-view 限高，否则长图
-     在小屏上根本看不全。 -->
+     在小屏上根本看不全。
+     两个入口共用这一个弹窗：刚下单成功（noticeSuccess=true，标题「预约成功」），
+     以及从预约卡片上重新打开（noticeSuccess=false，标题「化妆注意事项」）。 -->
 <view wx:if="{{showNotice}}" class="modal-mask notice-mask" bindtap="closeNotice">
   <view class="modal notice-modal" catchtap="noop">
-    <view class="modal-title">{{L.index.bookingSuccess}}</view>
+    <view class="modal-title">{{noticeSuccess ? L.index.bookingSuccess : L.index.noticeTitle}}</view>
     <view class="notice-subtitle">{{L.index.noticeSubtitle}}</view>
     <scroll-view class="notice-scroll" scroll-y="true">
-      <image class="notice-img" src="{{noticeImg}}" mode="widthFix" show-menu-by-longpress="{{true}}" />
+      <!-- 正在换临时链接：转圈，别让顾客对着一个白框等 -->
+      <view wx:if="{{noticeLoading}}" class="notice-loading">{{L.common.loading}}</view>
+      <!-- 换链接失败：给包内备用图（能看、但长按存不到相册）+ 重新加载 -->
+      <view wx:elif="{{noticeError}}" class="notice-error">
+        <image class="notice-img" src="/images/notice.jpg" mode="widthFix" />
+        <view class="notice-error-tip">{{L.index.noticeFallbackTip}}</view>
+        <button class="notice-retry" bindtap="retryNotice">{{L.index.noticeRetry}}</button>
+      </view>
+      <!-- 正常：https 临时链接，长按可保存到相册。binderror 是自愈入口 -->
+      <image wx:elif="{{noticeImg}}" class="notice-img" src="{{noticeImg}}" mode="widthFix"
+             show-menu-by-longpress="{{true}}" binderror="onNoticeImageError" />
     </scroll-view>
-    <view class="notice-tip">{{L.index.noticeTip}}</view>
+    <view class="notice-tip">{{noticeLoading || noticeError ? '' : L.index.noticeTip}}</view>
     <button class="btn-primary notice-ok" bindtap="closeNotice">{{L.index.noticeOk}}</button>
   </view>
 </view>

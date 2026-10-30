@@ -119,9 +119,15 @@ const DICT = {
       confirmSubmit: '确认并预约',
       saveSubmit: '保存',
       bookingSuccess: '预约成功',
+      // 预约卡片上的「注意事项」按钮，以及「再次查看」时弹窗的标题
+      noticeBtn: '注意事项',
+      noticeTitle: '化妆注意事项',
       noticeSubtitle: '请留意以下化妆注意事项',
       noticeTip: '长按上方图片可保存到相册',
       noticeOk: '我知道了',
+      // 临时链接换不到时的兜底提示
+      noticeFallbackTip: '当前显示的是备用图片，点「重新加载」后可长按保存到相册',
+      noticeRetry: '重新加载',
       nicknameRequired: '请先到个人中心登录并设置昵称',
       styleRequired: '请选择要画的妆造',
       cannotSubmit: '无法提交预约',
@@ -285,9 +291,15 @@ const DICT = {
       confirmSubmit: 'Confirm & Book',
       saveSubmit: 'Save',
       bookingSuccess: 'Booked!',
+      // 预约卡片上的「注意事项」按钮，以及「再次查看」时弹窗的标题
+      noticeBtn: 'Tips',
+      noticeTitle: 'Makeup Notes',
       noticeSubtitle: 'Please note the following makeup tips',
       noticeTip: 'Long-press the image to save it to your album',
       noticeOk: 'Got it',
+      // 临时链接换不到时的兜底提示
+      noticeFallbackTip: 'This is a fallback copy. Tap "Reload" to enable saving to your album',
+      noticeRetry: 'Reload',
       nicknameRequired: 'Log in and set a nickname in Profile first',
       styleRequired: 'Pick a makeup style',
       cannotSubmit: 'Cannot submit booking',

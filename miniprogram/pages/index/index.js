@@ -51,10 +51,19 @@ Page({
     detailBookingId: '',
     detailStyleRefs: [],
     submitting: false,
-    // 预约成功后的「注意事项」图。noticeImg 默认指向包内压缩图兜底，
-    // 云函数拿到 https 临时链接后会替换成可长按保存的那份
+    // 预约成功后的「注意事项」图。
+    // noticeImg 只装**当前有效**的 https 临时链接：空串 = 还没有；
+    // loading = 正在换一个；error = 换失败（弹窗里有重试按钮 + 包内备用图）。
+    // 注意：这里绝不留着旧链接 —— 临时链接约 2 小时过期，页面实例在后台活过
+    // 2 小时再打开，拿旧链接渲染出来就是一张白图（线上踩过）。
     showNotice: false,
-    noticeImg: '/images/notice.jpg',
+    // 弹窗是不是「刚下单成功」那一次弹的：
+    //   true  → 标题「预约成功」（刚下完单）
+    //   false → 标题「化妆注意事项」（从预约卡片上重新打开的）
+    noticeSuccess: false,
+    noticeImg: '',
+    noticeLoading: false,
+    noticeError: false,
     // 界面语言。'zh' | 'en'，以及整份文案字典 L（模板里写 {{L.index.xxx}}）
     lang: '',
     L: {},
@@ -102,9 +111,9 @@ Page({
   applyLang() {
     const lang = getLang();
     if (lang === this.data.lang) return;
-    // 换语言时把注意事项图退回包内兜底图：上一语言的临时链接还在 data 里，
-    // 不清掉的话英文界面会先闪一张中文图。
-    this.setData({ lang, L: getDict(lang), noticeImg: '/images/notice.jpg' });
+    // 换语言时把注意事项图清空：data 里那个 https 临时链接指向的是**上一语言**的图，
+    // 不清掉的话英文界面会先闪一张中文图。清空后下次打开时按新语言重新取。
+    this.setData({ lang, L: getDict(lang), noticeImg: '', noticeLoading: false, noticeError: false });
   },
 
   // 统一切换整页形态：顾客预约 ⇄ 化妆师后台，并让 tabBar 文案/图标跟着变
@@ -336,19 +345,44 @@ Page({
 
   noop() {},
 
-  // 预约成功后弹注意事项图。
+  // 打开「注意事项」弹窗。success=true 是「刚下单成功」那一次弹的（标题「预约成功」）；
+  // 预约卡片上的「注意事项」按钮走 success=false（标题「化妆注意事项」）。
   //
-  // 顺序讲究：先用缓存或包内兜底图把弹窗点亮，**不等网络**。原实现是先 await
-  // 一次云函数再 setData showNotice，弹窗被整趟往返卡住；包里已经有
-  // /images/notice.jpg 兜底，完全没有理由让顾客对着空白等一秒。
-  openNotice() {
+  // 只有一种情况能直接把链接塞给 <image>：**缓存里那份**。
+  // 缓存 TTL（90 分钟）比临时链接本身的寿命（约 2 小时）短，所以缓存里的链接
+  // 一定还没过期 —— 命中时零云函数调用。
+  //
+  // 缓存没命中就**留空 + 转圈**，然后去换一个新链接。
+  // 这里原来还有一层 `|| this.data.noticeImg` 的兜底，是个大坑：
+  // 页面实例在后台活过 2 小时后，data 里那份早就过期了，回退过去等于
+  // 拿一张失效的链接去渲染 —— 线上表现为「注意事项」按钮点开一片白图。
+  openNotice(success = false) {
+    this._noticeRetried = false;
     const cached = this.cachedNoticeUrl();
+    if (cached) {
+      this.setData({
+        showNotice: true,
+        noticeSuccess: !!success,
+        noticeImg: cached,
+        noticeLoading: false,
+        noticeError: false,
+      });
+      return;
+    }
     this.setData({
       showNotice: true,
-      noticeImg: cached || this.data.noticeImg || '/images/notice.jpg',
+      noticeSuccess: !!success,
+      noticeImg: '',
+      noticeLoading: true,
+      noticeError: false,
     });
-    // 缓存没命中才去换链接；换回来后静默替换，弹窗已经在了
-    if (!cached) this.fetchNoticeUrl();
+    this.fetchNoticeUrl();
+  },
+
+  // 预约卡片上的「注意事项」按钮：把那张注意事项图再弹一次。
+  // 顾客第一次弹出来时没长按保存，之后就找不到了 —— 这个入口就是补救。
+  showNoticeTips() {
+    this.openNotice(false);
   },
 
   // 注意事项图的缓存按语言分桶 —— 中英文是两张不同的图，
@@ -364,22 +398,44 @@ Page({
     return '';
   },
 
+  // 取一个新的 https 临时链接（云存储的临时链接约 2 小时后过期）。
+  // 成功：写缓存 + 渲染；失败：把弹窗切到 error 态，由顾客点「重新加载」。
   async fetchNoticeUrl() {
     const lang = this.data.lang || 'zh';
     try {
       const res = await wx.cloud.callFunction({ name: 'getNoticeImage', data: { lang } });
       const r = res && res.result;
-      if (!r || !r.success || !r.url) return;
+      if (!r || !r.success || !r.url) throw new Error('notice image unavailable');
       wx.setStorageSync(this.noticeCacheKey(), { url: r.url, at: Date.now() });
-      this.setData({ noticeImg: r.url });
+      this.setData({ noticeImg: r.url, noticeLoading: false, noticeError: false });
     } catch (err) {
-      // 保持包内兜底图：它至少显示得出来，只是长按存不到相册
       console.error('getNoticeImage failed:', err);
+      this.setData({ noticeLoading: false, noticeError: true });
     }
   },
 
+  // <image> 加载失败：多半是链接已过期或网络抖动。
+  // 自动换一个新链接重试**一次**；再失败就退回包内备用图 + 手动重试按钮，
+  // 不再自动重试 —— 免得链接一直有问题时变成死循环。
+  onNoticeImageError() {
+    if (this._noticeRetried) {
+      this.setData({ noticeImg: '', noticeLoading: false, noticeError: true });
+      return;
+    }
+    this._noticeRetried = true;
+    this.setData({ noticeLoading: true, noticeError: false });
+    this.fetchNoticeUrl();
+  },
+
+  // 弹窗里的「重新加载」按钮
+  retryNotice() {
+    this._noticeRetried = false;
+    this.setData({ noticeImg: '', noticeLoading: true, noticeError: false });
+    this.fetchNoticeUrl();
+  },
+
   closeNotice() {
-    this.setData({ showNotice: false });
+    this.setData({ showNotice: false, noticeLoading: false, noticeError: false });
   },
 
   onSelectStyle(e) {
@@ -558,7 +614,7 @@ Page({
       });
       if (res.result && res.result.success) {
         this.setData({ showModal: false });
-        this.openNotice();
+        this.openNotice(true);
         this.loadAll();
       } else if (res.result && res.result.code === 'NO_OPENID') {
         // 服务端拿不到身份，长文本用弹窗展示，避免 toast 截断
