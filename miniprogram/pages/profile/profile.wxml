@@ -81,6 +81,19 @@
     </view>
   </view>
 
+  <!-- 注意事项管理入口：仅化妆师视图可见。顾客预约成功后弹出的那些图
+       在这里上传 / 替换，中英文各一组，每组最多 5 张。
+       同样属于化妆师后台，**不参与翻译**，保持中文。 -->
+  <view wx:if="{{isAdmin}}" class="card info-entry-card" bindtap="openNotices">
+    <view class="info-entry-left">
+      <view class="info-entry-title">注意事项管理</view>
+      <view class="info-entry-sub">上传 / 替换顾客预约后看到的提示图</view>
+    </view>
+    <view class="info-entry-right">
+      <text class="info-entry-arrow">›</text>
+    </view>
+  </view>
+
   <!-- 双端切换入口：化妆师和顾客看到的是同一个位置、文案相反 -->
   <view wx:if="{{!isAdmin}}" class="admin-entry" bindtap="goAdmin">
     <text>{{L.profile.artistEntry}}</text>

@@ -10,7 +10,7 @@ A WeChat Mini Program (微信小程序) for a makeup artist's appointment bookin
 
 Two halves that talk only through cloud functions:
 
-- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/adminLogin`, `pages/adminSlots`, `pages/adminStyles`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (`infoForm`, `adminPanel`, `scheduleGrid`); a page must declare them in its own `.json` `usingComponents`. A component directory's files must be named after the directory (`adminPanel/adminPanel.js`), **not** `index.js` — `usingComponents` paths are resolved literally. Static images live in `miniprogram/images/` (currently only the tabBar icons). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
+- **Mini program** (`miniprogram/`) — plain WXML/WXSS/JS, no framework, no npm. Pages are registered in `miniprogram/app.json` (`pages/index`, `pages/profile`, `pages/adminLogin`, `pages/adminSlots`, `pages/adminStyles`, `pages/adminCosmetics`, `pages/adminNotices`) and nothing else may be added there without registering it. Shared UI lives in `miniprogram/components/` (`infoForm`, `adminPanel`, `scheduleGrid`); a page must declare them in its own `.json` `usingComponents`. A component directory's files must be named after the directory (`adminPanel/adminPanel.js`), **not** `index.js` — `usingComponents` paths are resolved literally. Static images live in `miniprogram/images/` (the tabBar icons plus `notice.jpg`, the bundled fallback for the 注意事项弹窗). WeChat's cloud quickstart leftovers (`pages/example`, `components/cloudTipModal`, `envList.js`, `images/`) were moved to `delete/` — see that folder's README; the tabBar icons in `images/tabbar/` were copied from there and recolored to the project palette with Pillow.
 
 ### 双端首页（顾客 ⇄ 化妆师）
 
@@ -87,6 +87,7 @@ There is no custom component other than `components/infoForm`, `components/admin
 - `timeSlots` — one doc per `date` (`YYYY-MM-DD`) with fields `morning`/`afternoon`/`evening`, each `{ open, booked, done, styles? }` where `styles` is a list of `{ name, price }` (the 妆造 options offered for that slot). Created lazily by `adminSetTimeSlot` (all other slots default closed). **另有一篇 `_id='slot_times'` 的配置文档**（时段起止时间，见「时段时间是数据」一节）——它没有 `date` 字段，所以按日期查时段表的所有查询都不会命中它；`adminListSlots` 不带日期区间时会把没有 `date` 的文档滤掉。
 - `bookings` — one doc per appointment: `_openid`, `date`, `slot`, `slotName`, `name`, `skinType`, `remark`, `styleName`, `stylePrice`, `styleRefPhotos`, `status`, `createTime`, `updateTime`. `styleRefPhotos` 是「想画的妆容照片」（见「想画的妆容照片」一节），选填。`review` 是顾客对这一单的评价 `{ content, createTime, updateTime }`（见「顾客评价」一节），只有「已完成」的单才有。
 - `users` — one doc per customer, keyed by `doc(openid)`: `_openid`, `avatarUrl`, `nickname`, `info`, `updateTime`, and the server-owned `admin` / `adminUpdateTime` (see 免密登录 below). `info` is the 个人信息表 written by `pages/profile`: `gender`, `skinType`, `sensitiveLevel`, `hasAcne`, `hasCosmeticSurgery`, `hasAllergy`, `allergyNote`, `photos` (array of cloud-storage fileIDs, ≤ 5). Two fields are conditional and the server enforces it, not just the UI: `sensitiveLevel` is kept only while `skinType === '敏感性'`, and `allergyNote` only while `hasAllergy === '有'` — a stale free-text value is dropped whenever its parent toggle turns off. **`admin` must never enter any whitelist patch or the `get` response — it is written only by `adminLogin`/`adminLogout`.** **This collection must be created manually in the cloud console** (permission: 仅创建者可读写) — the function turns the resulting `-502005` into a readable message but cannot create it itself. Without it, passwordless re-mint always fails and the artist re-enters the password every time.
+- `noticeImages` — 化妆注意事项图片，一文档一张图：`lang`（`zh` / `en`，中英文各一组）、`fileID`（云存储 `notice/` 目录）、`sort`、`createTime`、`updateTime`。每种语言最多 5 张（服务端硬限制）。集合里还有一篇 `_id='meta'` 的标记文档（**没有 `lang` 字段**，所以任何按 `lang` 过滤的查询都命中不到它）：它的作用是标记「这个集合被化妆师管理过」——一旦存在，`getNoticeImage` 就不再回退旧图。详见「注意事项图（可多张、可自维护）」一节。**首次写入时云数据库会隐式创建集合**；万一环境关掉了自动创建，函数会把 `-502005` 翻译成「去控制台新建集合 noticeImages」的提示。
 
 ### Customer profile (头像/昵称/个人信息表)
 
@@ -132,7 +133,7 @@ Client-only enforcement would be worthless here, so `createBooking` re-checks se
 
 ### 中英文界面切换 (utils/i18n.js)
 
-顾客端界面可在**个人中心「我的资料」卡片右上角**用 中/EN 开关切换，给外国顾客用。**只翻顾客端**（`pages/index`、`pages/profile`、`components/infoForm`）；化妆师后台（adminLogin / adminSlots / adminStyles / adminCosmetics / adminPanel / scheduleGrid）保持中文。开关只放在个人中心，是因为语言是**每个顾客自己的**偏好，不能让化妆师替所有顾客设定。
+顾客端界面可在**个人中心「我的资料」卡片右上角**用 中/EN 开关切换，给外国顾客用。**只翻顾客端**（`pages/index`、`pages/profile`、`components/infoForm`）；化妆师后台（adminLogin / adminSlots / adminStyles / adminCosmetics / adminNotices / adminPanel / scheduleGrid）保持中文。开关只放在个人中心，是因为语言是**每个顾客自己的**偏好，不能让化妆师替所有顾客设定。
 
 四条不变量，改动前务必读完：
 
@@ -239,9 +240,9 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 - `submitReview` 只回传 `{ content }`，**不回传时间戳** —— `db.serverDate()` 序列化回客户端会变成 `{$date: ...}`，客户端用不上；后台那边是从库里原样读的。
 - **两端各有一次通知**（详见「订阅消息」一节）：这一单被标记完成（化妆师手动点「标记完成」，或 `sweepOverdue` 定时自动结算）→ 服务端给顾客发「提醒评价」；顾客提交**首次**评价 → 服务端 `submitReview` 给每个 admin 发「评价完成」。改评价不再发消息（省额度）。所以 `submitReview` 和 `sweepOverdue` 都需要 `config.json` 里的 `subscribeMessage.send` 权限。
 
-### 化妆注意事项图（两个入口，同一个弹窗）
+### 注意事项图（可多张、可自维护）
 
-图放在云存储，云函数 `getNoticeImage` 用 admin SDK 换 https 临时链接下发（桶保持「仅创建者可读写」，`cloud://` 直链顾客端会一片空白 —— 同素颜照那个坑）。**顾客端有两个入口，共用 `pages/index` 的一个弹窗**：
+图放在云存储 `notice/` 目录，**记录存在数据库集合 `noticeImages`**（`lang` + `fileID` + `sort`），化妆师自己在后台的「注意事项管理」页上传 / 替换 / 删除 / 排序，每种语言最多 5 张。顾客端云函数 `getNoticeImage` 用 admin SDK 把 fileID 换成 https 临时链接下发（桶保持「仅创建者可读写」，`cloud://` 直链顾客端会一片空白 —— 同素颜照那个坑）。**顾客端有两个入口，共用 `pages/index` 的一个弹窗**：
 
 | 入口 | 触发 | 标题 |
 |---|---|---|
@@ -250,12 +251,29 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 - 第二个入口是补救用的：预约完那一下顾客没长按保存，之后就找不到了。「注意事项」按钮放在卡片上 **「详细信息」左边**，和「详细信息」「取消预约」同一行（只在 pending/confirmed 的卡片上出现 —— 注意事项是「去之前看」的东西，已完成的单没有意义）。
 - 标题用 `data.noticeSuccess` 这一个布尔量切换，**不要**为两个入口各弹一个弹窗，也不要把标题写死在 WXML 里。
-- 弹窗是三态：`noticeLoading`（转圈）/ `noticeImg`（正常）/ `noticeError`（换链接失败 → 包内备用图 + 「重新加载」按钮）。
-- **只有缓存里那份链接可以直接塞给 `<image>`**：缓存 TTL（90 分钟）比临时链接寿命（约 2 小时）短，所以缓存命中的一定还没过期，零云函数调用。
-- ⚠️ **绝对不要回退到 `this.data.noticeImg`**。页面实例在后台活过 2 小时后，data 里那份早已过期，回退过去就是拿失效链接渲染 —— 线上踩过：顾客点「注意事项」出来一张白图，报 `Failed to load image ... net::OK`（COS 对过期签名返回 XML 错误页，不是图片）。缓存没命中就**留空 + 转圈**，等新链接。
-- `<image binderror>` 是自愈入口：`onNoticeImageError()` 自动换一个链接重试**一次**，再失败退回备用图 + 手动重试，绝不自动重试成死循环。
+- 弹窗是四态：`noticeLoading`（转圈）/ `noticeImages`（正常，**数组**）/ `noticeError`（换链接失败 → 包内备用图 + 「重新加载」按钮）/ `noticeEmpty`（化妆师把这一组清空了，一张都没有）。⚠️ 四态共用一条 `wx:if / wx:elif / wx:elif / wx:else` 链，多一个分支就得同步改这条链。
+- **多张时用 `<swiper>`**（`current="{{noticeIndex}}"`，`bindchange` 回写页码），底下给出「第几张 / 共几张」和「左右滑动查看更多」。图用 `mode="aspectFit"` —— 竖图不顶出弹窗、横图也不裁掉内容。**不要**把 swiper 塞进 `scroll-view`：横向滑动手势会和纵向滚动打架。
+- swiper 高度**必须跟着屏幕走**（`.notice-swiper` 用 `52vh`，别写死 rpx）：写死高度在小屏上会把下面的「第几张 / 共几张」和「我知道了」顶出屏幕 —— 顾客只看到第一张、还看不到「可以滑动」的提示，**看起来就像「只有一张」**。同理，页码和提示必须在同一屏里，顾客才知道能左右滑。
+- **只有刚从服务端取回来的链接可以塞给 `<image>`**。列表**不缓存**（见「调用次数」一节）：化妆师随时会换图，本地缓存里的旧列表会让顾客看到的张数整个是错的。取链接期间只转圈，**不要**先渲染上一份再换成新的。
+- ⚠️ **绝对不要回退到 `this.data.noticeImages`**。页面实例在后台活过 2 小时后，data 里那份早已过期，回退过去就是拿失效链接渲染 —— 线上踩过：顾客点「注意事项」出来一张白图，报 `Failed to load image ... net::OK`（COS 对过期签名返回 XML 错误页，不是图片）。取不到就**留空 + 转圈**，等新链接。
+- `<image binderror>` 是自愈入口：`onNoticeImageError()` 自动换一批新链接重试**一次**；再失败就把那一张从数组里剔掉（其余照常能看，剔到最后一张就转成 `noticeEmpty`），绝不自动重试成死循环。
 - 长按保存靠 `<image show-menu-by-longpress>`，**只有 https 临时链接生效**，包内备用图 `/images/notice.jpg`（1080×1440，能看）长按不出菜单 —— 所以备用图只是「网络挂了也让她看得到」，不是终态。
-- 换语言时 `applyLang()` 要把 `noticeImg` 清空：data 里那个链接指向的是**上一语言**的图，不清会先闪一张中文图。
+- 换语言时 `applyLang()` 要把 `noticeImages` 清空：data 里那些链接指向的是**上一语言**的图，不清会先闪一张中文图。
+
+**中英文是两组独立的图。** 顾客按自己的界面语言取对应那组，该组一张都没有时回退中文那组（英文版还没上传时的老行为）。后台管理页顶部有「中文 / English」切换。
+
+**旧图迁移**：`getNoticeImage` 里那份硬编码 fileID（`notice/notice.jpg`）只在「集合从未被管理过」时兜底。化妆师第一次打开「注意事项管理」页时，`adminNoticeImages{action:'list'}` 会把它迁进数据库（连同 `_id='meta'` 标记一起写），此后她就能像管理别的图片一样删掉 / 替换它，`getNoticeImage` 也不再回退旧图。迁移来的那张在删除时**不删云存储文件**（它可能被别处引用）。
+
+**云函数 `adminNoticeImages`**（`verifyAdmin()` 按约定抄一份）管所有后台动作：
+
+| `event.action` | 入参 | 行为 |
+|---|---|---|
+| `'list'` | — | 返回两种语言的图片（各带临时链接）；集合为空时先迁移旧图 |
+| `'add'` | `lang`, `fileID` | 新增一张；超过 5 张直接拒绝；fileID 必须匹配 `cloud://….jpg/png/webp/heic` |
+| `'delete'` | `id` | 删记录 + 删云存储文件（迁移来的旧图除外） |
+| `'move'` | `id`, `dir` | 上移 / 下移（交换相邻两张的 `sort`） |
+
+客户端一律**就地打补丁**，不重拉整表：新增的追加到本地列表末尾，删除的直接从本地列表里剔掉，移动则是把两张的 `sort` 互换（与服务端同一套规则）。
 
 ### 调用次数：缓存与本地打补丁
 
@@ -263,10 +281,11 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 
 **不缓存实时状态。** `bookings` / `timeSlots` 一律每次现拉 —— 刚放开的时段、刚确认的预约必须立刻看到，缓存会让化妆师对着过期的界面做决定。已有的节流口子在 `pages/index`（`LOAD_TTL` 60s，仅覆盖切 tab 往返）。
 
-**只缓存两样东西**，都在 `storage` 里，TTL 到期或写操作发生时自动失效：
+**只缓存一样东西**，在 `storage` 里，TTL 到期或写操作发生时自动失效：
 
 - **妆造库** → `miniprogram/utils/styleCache.js`（TTL 5 分钟）。`scheduleGrid` 和 `pages/adminStyles` 共用一份，不再各拉一次。妆容管理页每次增删都经 `applyLocalStyles` → `saveStyles` 把新列表写回缓存（连时间戳一起刷新），所以「刚改完就返回时段管理」拿到的必然是最新的一份 —— 这就是 `scheduleGrid.reload()` 不需要 `withStyles` 参数的原因。手动下拉刷新传 `{maxAgeMs: 0}` 绕过缓存。缓存**只存妆造列表，不存令牌**，也不绕过服务端的 `UNAUTHORIZED`。
-- **注意事项图的 https 临时链接** → `pages/index` 里的 `NOTICE_CACHE_KEY`（TTL 90 分钟，链接本身约 2 小时过期）。
+
+**注意事项图列表刻意不缓存。** 它以前是固定的一张图，缓存 90 分钟省一次云调用；现在图由化妆师随时可换，缓存里的旧数组会让顾客看到的「几张」整个是错的 —— 本地缓存根本不知道云端已经变了。要「看到的张数」永远对，就得每次现取；这个弹窗一天开不了几次，一次云调用换一份准确列表，额度完全撑得住。**同理，本地缓存里存着旧链接时不要先渲染旧的再换成新的**：顾客会以为「就是这一张」，比慢半秒更难解释 —— 所以取链接期间只转圈。
 
 **改完就地打补丁，不要重拉整表。** 三个云函数会把刚写进去的那一条回传，客户端据此更新本地对象：
 
@@ -277,6 +296,7 @@ Per-slot 妆造 options and prices are configured by the admin (后台首页课�
 | 妆造增删改 | `adminStyles` → `style`（含 `_id`） | `adminStyles.applyLocalStyles()` |
 | 改时段起止时间 | `adminSlotTimes` → `slotTimes` | `scheduleGrid.patchCellTime()` / 时间管理页重建 `rows` |
 | 写顾客评价 | `submitReview` → `review` | `pages/index` 就地改 `myBookings` 那一条 |
+| 注意事项图片增删 / 排序 | `adminNoticeImages` → `image`（含 `id`） | `pages/adminNotices` 就地改本地 `all` 列表 |
 
 **顾客评价也不额外花云函数调用**：评价挂在预约文档上，`listWeekSchedule` / `adminGetBookings` 返回整条预约文档时 `review` 就跟着回来了。
 

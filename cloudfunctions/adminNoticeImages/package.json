@@ -1,0 +1,9 @@
+{
+  "name": "adminNoticeImages",
+  "version": "1.0.0",
+  "description": "化妆师注意事项图片管理（上传 / 删除 / 排序，每种语言最多 5 张）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

@@ -13,13 +13,12 @@ const { getLang, getDict, t, listJoin } = require('../../utils/i18n.js');
 // 节流窗口：60 秒内不重复拉取同一批数据（云开发免费版每月仅 20 万次调用额度）
 const LOAD_TTL = 60 * 1000;
 
-// 「化妆注意事项」临时链接的本地缓存。
-// getNoticeImage 不查数据库，只把一个固定的云存储 fileID 换成 https 临时链接，
-// 而链接约 2 小时后才过期——每次预约都换一次是纯浪费的云函数调用。
-// TTL 取 1.5 小时留出余量，避免卡在过期边界上给顾客一张打不开的图。
-// 缓存按语言分桶：中英文是两张不同的图，混用会拿到另一种语言的图。
-const NOTICE_CACHE_KEY = 'notice_img_cache';
-const NOTICE_TTL = 90 * 60 * 1000;
+// 「化妆注意事项」的临时链接**不再缓存**，每次打开弹窗都现取。
+// 以前图是固定的一张，缓存 90 分钟省一次云调用；现在图由化妆师随时可换，
+// 缓存里的旧数组会让顾客看到的「几张」整个是错的——她刚换完图，
+// 顾客那边还停在旧列表上（本地缓存根本不知道云端已经变了）。
+// 这个弹窗一天开不了几次，一次云调用换一份准确的列表，值。
+// 云函数调用额度是每月 20 万次，预约量级完全撑得住。
 
 Page({
   data: {
@@ -52,8 +51,10 @@ Page({
     detailStyleRefs: [],
     submitting: false,
     // 预约成功后的「注意事项」图。
-    // noticeImg 只装**当前有效**的 https 临时链接：空串 = 还没有；
-    // loading = 正在换一个；error = 换失败（弹窗里有重试按钮 + 包内备用图）。
+    // noticeImages 只装**当前有效**的 https 临时链接数组（化妆师最多传 5 张，
+    // 顾客可以左右滑动看）；空数组 = 还没有；
+    // loading = 正在换一批；error = 换失败（弹窗里有重试按钮 + 包内备用图）；
+    // empty = 化妆师把这一组清空了，一张都没有。
     // 注意：这里绝不留着旧链接 —— 临时链接约 2 小时过期，页面实例在后台活过
     // 2 小时再打开，拿旧链接渲染出来就是一张白图（线上踩过）。
     showNotice: false,
@@ -61,9 +62,11 @@ Page({
     //   true  → 标题「预约成功」（刚下完单）
     //   false → 标题「化妆注意事项」（从预约卡片上重新打开的）
     noticeSuccess: false,
-    noticeImg: '',
+    noticeImages: [],
+    noticeIndex: 0,
     noticeLoading: false,
     noticeError: false,
+    noticeEmpty: false,
     // 界面语言。'zh' | 'en'，以及整份文案字典 L（模板里写 {{L.index.xxx}}）
     lang: '',
     L: {},
@@ -111,9 +114,17 @@ Page({
   applyLang() {
     const lang = getLang();
     if (lang === this.data.lang) return;
-    // 换语言时把注意事项图清空：data 里那个 https 临时链接指向的是**上一语言**的图，
+    // 换语言时把注意事项图清空：data 里那些 https 临时链接指向的是**上一语言**的图，
     // 不清掉的话英文界面会先闪一张中文图。清空后下次打开时按新语言重新取。
-    this.setData({ lang, L: getDict(lang), noticeImg: '', noticeLoading: false, noticeError: false });
+    this.setData({
+      lang,
+      L: getDict(lang),
+      noticeImages: [],
+      noticeIndex: 0,
+      noticeLoading: false,
+      noticeError: false,
+      noticeEmpty: false,
+    });
   },
 
   // 统一切换整页形态：顾客预约 ⇄ 化妆师后台，并让 tabBar 文案/图标跟着变
@@ -348,66 +359,55 @@ Page({
   // 打开「注意事项」弹窗。success=true 是「刚下单成功」那一次弹的（标题「预约成功」）；
   // 预约卡片上的「注意事项」按钮走 success=false（标题「化妆注意事项」）。
   //
-  // 只有一种情况能直接把链接塞给 <image>：**缓存里那份**。
-  // 缓存 TTL（90 分钟）比临时链接本身的寿命（约 2 小时）短，所以缓存里的链接
-  // 一定还没过期 —— 命中时零云函数调用。
-  //
-  // 缓存没命中就**留空 + 转圈**，然后去换一个新链接。
-  // 这里原来还有一层 `|| this.data.noticeImg` 的兜底，是个大坑：
-  // 页面实例在后台活过 2 小时后，data 里那份早就过期了，回退过去等于
-  // 拿一张失效的链接去渲染 —— 线上表现为「注意事项」按钮点开一片白图。
+  // 每次都现取一份列表：**不读本地缓存**。化妆师随时可能换图，
+  // 缓存里的旧列表会让顾客看到的张数整个是错的（她换了图，顾客还停在旧列表）。
+  // 取链接期间只转圈，不先渲染上一份 —— 先渲染旧的再换成新的，
+  // 顾客会以为「就是这一张」，比慢半秒更难解释。
   openNotice(success = false) {
     this._noticeRetried = false;
-    const cached = this.cachedNoticeUrl();
-    if (cached) {
-      this.setData({
-        showNotice: true,
-        noticeSuccess: !!success,
-        noticeImg: cached,
-        noticeLoading: false,
-        noticeError: false,
-      });
-      return;
-    }
     this.setData({
       showNotice: true,
       noticeSuccess: !!success,
-      noticeImg: '',
+      noticeImages: [],
+      noticeIndex: 0,
       noticeLoading: true,
       noticeError: false,
+      noticeEmpty: false,
     });
-    this.fetchNoticeUrl();
+    this.fetchNoticeImages();
   },
 
-  // 预约卡片上的「注意事项」按钮：把那张注意事项图再弹一次。
+  // 预约卡片上的「注意事项」按钮：把那些注意事项图再弹一次。
   // 顾客第一次弹出来时没长按保存，之后就找不到了 —— 这个入口就是补救。
   showNoticeTips() {
     this.openNotice(false);
   },
 
-  // 注意事项图的缓存按语言分桶 —— 中英文是两张不同的图，
-  // 混用会拿到另一种语言的临时链接。
-  noticeCacheKey() {
-    return `${NOTICE_CACHE_KEY}:${this.data.lang || 'zh'}`;
-  },
-
-  // 返回一个仍在有效期内的临时链接，没有则返回空串
-  cachedNoticeUrl() {
-    const c = wx.getStorageSync(this.noticeCacheKey());
-    if (c && c.url && Date.now() - (c.at || 0) < NOTICE_TTL) return c.url;
-    return '';
-  },
-
-  // 取一个新的 https 临时链接（云存储的临时链接约 2 小时后过期）。
-  // 成功：写缓存 + 渲染；失败：把弹窗切到 error 态，由顾客点「重新加载」。
-  async fetchNoticeUrl() {
+  // 取一批新的 https 临时链接（云存储的临时链接约 2 小时后过期）。
+  // 成功：直接渲染；失败：把弹窗切到 error 态，由顾客点「重新加载」。
+  async fetchNoticeImages() {
     const lang = this.data.lang || 'zh';
     try {
       const res = await wx.cloud.callFunction({ name: 'getNoticeImage', data: { lang } });
       const r = res && res.result;
-      if (!r || !r.success || !r.url) throw new Error('notice image unavailable');
-      wx.setStorageSync(this.noticeCacheKey(), { url: r.url, at: Date.now() });
-      this.setData({ noticeImg: r.url, noticeLoading: false, noticeError: false });
+      if (!r || !r.success) throw new Error('notice image unavailable');
+      // 新版云函数回 images 数组；老版只回单张 url。两个都兼容，
+      // 免得云函数还没更新时顾客端直接瘫掉。
+      const images = Array.isArray(r.images)
+        ? r.images.filter(Boolean)
+        : (r.url ? [r.url] : []);
+      if (!images.length) {
+        // 一张都没有不是错误：化妆师把这一组清空了
+        this.setData({
+          noticeImages: [], noticeIndex: 0,
+          noticeLoading: false, noticeError: false, noticeEmpty: true,
+        });
+        return;
+      }
+      this.setData({
+        noticeImages: images, noticeIndex: 0,
+        noticeLoading: false, noticeError: false, noticeEmpty: false,
+      });
     } catch (err) {
       console.error('getNoticeImage failed:', err);
       this.setData({ noticeLoading: false, noticeError: true });
@@ -415,27 +415,43 @@ Page({
   },
 
   // <image> 加载失败：多半是链接已过期或网络抖动。
-  // 自动换一个新链接重试**一次**；再失败就退回包内备用图 + 手动重试按钮，
+  // 自动换一批新链接重试**一次**；再失败就把这一张去掉（其余照常能看），
   // 不再自动重试 —— 免得链接一直有问题时变成死循环。
-  onNoticeImageError() {
+  onNoticeImageError(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
     if (this._noticeRetried) {
-      this.setData({ noticeImg: '', noticeLoading: false, noticeError: true });
+      if (!isNaN(idx) && idx >= 0 && idx < this.data.noticeImages.length) {
+        const images = this.data.noticeImages.slice();
+        images.splice(idx, 1);
+        // 删到最后一张就变成空态，别留个空白框给顾客看
+        this.setData({ noticeImages: images, noticeIndex: 0, noticeEmpty: images.length === 0 });
+      }
       return;
     }
     this._noticeRetried = true;
-    this.setData({ noticeLoading: true, noticeError: false });
-    this.fetchNoticeUrl();
+    // 不清屏：旧链接还在那儿，换一批新的直接覆盖掉
+    this.fetchNoticeImages();
   },
 
   // 弹窗里的「重新加载」按钮
   retryNotice() {
     this._noticeRetried = false;
-    this.setData({ noticeImg: '', noticeLoading: true, noticeError: false });
-    this.fetchNoticeUrl();
+    this.setData({
+      noticeImages: [], noticeIndex: 0,
+      noticeLoading: true, noticeError: false, noticeEmpty: false,
+    });
+    this.fetchNoticeImages();
+  },
+
+  // 左右滑动看下一张注意事项（多张时才有意义）
+  onNoticeSwipe(e) {
+    const idx = Number(e.detail && e.detail.current);
+    if (isNaN(idx) || idx === this.data.noticeIndex) return;
+    this.setData({ noticeIndex: idx });
   },
 
   closeNotice() {
-    this.setData({ showNotice: false, noticeLoading: false, noticeError: false });
+    this.setData({ showNotice: false, noticeLoading: false, noticeError: false, noticeEmpty: false });
   },
 
   onSelectStyle(e) {

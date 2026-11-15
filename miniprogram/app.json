@@ -5,7 +5,8 @@
     "pages/adminLogin/adminLogin",
     "pages/adminSlots/adminSlots",
     "pages/adminStyles/adminStyles",
-    "pages/adminCosmetics/adminCosmetics"
+    "pages/adminCosmetics/adminCosmetics",
+    "pages/adminNotices/adminNotices"
   ],
   "tabBar": {
     "color": "#999999",

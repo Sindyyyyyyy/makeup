@@ -1,0 +1,208 @@
+/* pages/adminNotices/adminNotices.wxss - 注意事项管理页 */
+.container {
+  padding: 24rpx;
+  padding-bottom: 120rpx;
+  min-height: 100vh;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+.back-btn {
+  color: #C95B7C;
+  font-size: 28rpx;
+  font-weight: 500;
+  padding: 8rpx 0;
+}
+.page-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #4A4A4A;
+}
+
+.login-tip {
+  text-align: center;
+  color: #BBB;
+  font-size: 26rpx;
+  padding: 40rpx 0;
+}
+
+/* ============ 语言切换 ============ */
+.lang-switch {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+.lang-btn {
+  flex: 1;
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  background: #FFFFFF;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 999rpx;
+  padding: 14rpx 0;
+}
+.lang-btn.on {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  border-color: transparent;
+  color: #FFFFFF;
+  font-weight: 500;
+}
+
+.tip-line {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 20rpx;
+  padding: 0 4rpx;
+}
+
+/* ============ 列表 ============ */
+.notice-list {
+  margin-bottom: 24rpx;
+}
+.empty {
+  text-align: center;
+  color: #BBB;
+  padding: 60rpx 0;
+  font-size: 26rpx;
+}
+
+.notice-card {
+  display: flex;
+  background: #FFFFFF;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 20rpx;
+  padding: 16rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.notice-thumb {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 16rpx;
+  background: #FFF5F7;
+  flex-shrink: 0;
+}
+/* 云存储里的文件没了：红底标出来，别让它混在一堆正常缩略图里看不见 */
+.notice-thumb-lost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  color: #C62828;
+  background: #FFEBEE;
+  border: 2rpx solid #FFCDD2;
+  box-sizing: border-box;
+}
+.notice-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding-left: 20rpx;
+}
+.notice-no {
+  font-size: 26rpx;
+  color: #4A4A4A;
+  font-weight: 500;
+}
+.notice-ops {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+/* 操作按钮（照 adminCosmetics 的 .op-btn 样式） */
+.op-btn {
+  color: #C95B7C;
+  font-size: 24rpx;
+  border: 2rpx solid #FFB6C8;
+  border-radius: 24rpx;
+  padding: 6rpx 20rpx;
+}
+.op-btn.danger {
+  color: #999;
+  border-color: #EEE;
+}
+
+/* ============ 上传 ============ */
+.upload-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.btn-primary {
+  background: linear-gradient(135deg, #C95B7C 0%, #E895A8 100%);
+  color: #FFFFFF !important;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  border: none;
+}
+.upload-tip {
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: #B89C8A;
+  text-align: center;
+}
+
+/* 说明。默认收起只露两行（-webkit-line-clamp），点标题右边的三角展开。 */
+.tips {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+.tips-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.tips-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #C95B7C;
+}
+.tips-toggle {
+  display: flex;
+  align-items: center;
+  padding: 4rpx 12rpx;
+  border: 2rpx solid #FFE0E8;
+  border-radius: 24rpx;
+}
+.tips-toggle-text {
+  font-size: 22rpx;
+  color: #C95B7C;
+  margin-right: 6rpx;
+}
+.tips-arrow {
+  font-size: 22rpx;
+  color: #C95B7C;
+  line-height: 1;
+}
+/* 正文：<text> 里的 \n 会渲染成换行，所以整段是一串文本行，
+   line-clamp 按行截断（收起时只露两行并带省略号）。
+   展开时改成 display:block 而不是 line-clamp:unset —— 各端对
+   line-clamp 关键字的支持不一致，切 display 最稳。 */
+.tips-text {
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.tips-text.collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.tips-text.expanded {
+  display: block;
+}

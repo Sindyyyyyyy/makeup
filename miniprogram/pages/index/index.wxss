@@ -518,6 +518,41 @@
   width: 100%;
   border-radius: 12rpx;
 }
+/* 多张注意事项：swiper 固定高度，图片按比例缩放塞进去（aspectFit），
+   竖图不会顶出弹窗，横图两侧留白也不会裁掉内容。
+   高度用 vh 而不是写死 rpx：写死 720rpx 在小屏上会把下面的「第几张 / 共几张」
+   和「我知道了」按钮顶出屏幕，顾客只看到第一张、还不知道能左右滑，
+   看起来就像「只有一张」。52vh 是跟着屏幕走的高度，整屏都放得下。 */
+.notice-swiper {
+  height: 52vh;
+  max-height: 760rpx;
+  min-height: 340rpx;
+  border-radius: 12rpx;
+  background: #FFF7FA;
+  overflow: hidden;
+}
+.notice-swiper-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* 「第几张 / 共几张」+ 可以左右滑动的提示 */
+.notice-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+.notice-pager-text {
+  font-size: 24rpx;
+  color: #C95B7C;
+  font-weight: 600;
+}
+.notice-pager-hint {
+  font-size: 22rpx;
+  color: #BBB;
+}
 .notice-tip {
   margin-top: 20rpx;
   font-size: 24rpx;

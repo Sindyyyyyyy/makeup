@@ -1,0 +1,71 @@
+<!-- pages/adminNotices/adminNotices.wxml - 注意事项管理页 -->
+<view class="container">
+  <view class="page-header">
+    <view class="back-btn" bindtap="goBack">‹ 返回</view>
+    <text class="page-title">注意事项管理</text>
+    <view style="width:80rpx"></view>
+  </view>
+
+  <view wx:if="{{!isAdmin}}" class="login-tip">
+    <text>请先在「化妆师后台」登录后再管理注意事项</text>
+  </view>
+
+  <block wx:else>
+    <!-- 语言切换：中英文各一组，顾客按自己的界面语言看对应那组 -->
+    <view class="lang-switch">
+      <view class="lang-btn {{lang === 'zh' ? 'on' : ''}}" data-lang="zh" bindtap="onLangTap">中文</view>
+      <view class="lang-btn {{lang === 'en' ? 'on' : ''}}" data-lang="en" bindtap="onLangTap">English</view>
+    </view>
+
+    <view class="tip-line">
+      顾客预约成功后会看到这一组的图片，共 {{list.length}} / {{maxPerLang}} 张
+    </view>
+
+    <!-- 列表 -->
+    <view class="notice-list">
+      <view wx:if="{{loading && list.length === 0}}" class="empty">加载中…</view>
+      <view wx:elif="{{list.length === 0}}" class="empty">
+        这一组还没有图片，点下面的按钮上传
+      </view>
+
+      <view wx:for="{{list}}" wx:key="id" class="notice-card">
+        <!-- 换不到临时链接 = 云存储里那个文件已经没了（被删过、或没传成功）。
+             这种情况顾客那边根本收不到这张图，得让她看见、删掉重传。 -->
+        <view wx:if="{{!item.url}}" class="notice-thumb notice-thumb-lost">图片丢失</view>
+        <image wx:else class="notice-thumb" src="{{item.url}}" mode="aspectFill"
+               data-url="{{item.url}}" bindtap="previewImage" />
+        <view class="notice-card-main">
+          <view class="notice-no">第 {{index + 1}} 张</view>
+          <view class="notice-ops">
+            <view class="op-btn" data-id="{{item.id}}" data-dir="up" bindtap="moveImage">上移</view>
+            <view class="op-btn" data-id="{{item.id}}" data-dir="down" bindtap="moveImage">下移</view>
+            <view class="op-btn danger" data-id="{{item.id}}" bindtap="removeImage">删除</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 上传 -->
+    <view class="upload-card">
+      <button class="btn-primary" bindtap="chooseAndUpload"
+              loading="{{uploading}}" disabled="{{uploading || list.length >= maxPerLang}}">
+        {{uploading ? '上传中…' : '上传注意事项图片'}}
+      </button>
+      <view wx:if="{{list.length >= maxPerLang}}" class="upload-tip">
+        这一组已经传满 {{maxPerLang}} 张，删掉一张再传
+      </view>
+    </view>
+
+    <!-- 说明。默认收起只露两行（-webkit-line-clamp），点标题右边的三角展开。 -->
+    <view class="tips">
+      <view class="tips-head" bindtap="toggleTips">
+        <view class="tips-title">💡 操作说明</view>
+        <view class="tips-toggle">
+          <text class="tips-toggle-text">{{tipsExpanded ? '收起' : '展开'}}</text>
+          <text class="tips-arrow">{{tipsExpanded ? '▲' : '▼'}}</text>
+        </view>
+      </view>
+      <text class="tips-text {{tipsExpanded ? 'expanded' : 'collapsed'}}">{{tipsText}}</text>
+    </view>
+  </block>
+</view>

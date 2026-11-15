@@ -143,6 +143,11 @@ Page({
     wx.navigateTo({ url: '/pages/adminCosmetics/adminCosmetics' });
   },
 
+  // 注意事项管理：顾客预约成功后弹出的那些图在这里上传 / 替换。
+  openNotices() {
+    wx.navigateTo({ url: '/pages/adminNotices/adminNotices' });
+  },
+
   // ============ 资料 ============
   async fetchProfile() {
     // 节流：与首页共享时间戳，60 秒内已经拉过就不必再打一次云函数。

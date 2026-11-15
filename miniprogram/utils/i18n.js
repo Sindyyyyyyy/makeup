@@ -125,6 +125,10 @@ const DICT = {
       noticeSubtitle: '请留意以下化妆注意事项',
       noticeTip: '长按上方图片可保存到相册',
       noticeOk: '我知道了',
+      // 多张注意事项时的滑动提示
+      noticeSwipeHint: '左右滑动查看更多',
+      // 化妆师一张都没传时的说明
+      noticeEmpty: '暂时没有注意事项',
       // 临时链接换不到时的兜底提示
       noticeFallbackTip: '当前显示的是备用图片，点「重新加载」后可长按保存到相册',
       noticeRetry: '重新加载',
@@ -161,7 +165,7 @@ const DICT = {
       loginNickTip: '在键盘上点「使用微信昵称」完成登录',
       loginSuccess: '登录成功',
       infoEntryTitle: '个人信息',
-      infoEntrySub: '性别、肤质、爆痘、医美、过敏、素颜照',
+      infoEntrySub: '性别、肤质、过敏、素颜照等',
       filled: '已填写',
       fill: '去填写',
       avatarUploadFailed: '头像上传失败',
@@ -297,6 +301,10 @@ const DICT = {
       noticeSubtitle: 'Please note the following makeup tips',
       noticeTip: 'Long-press the image to save it to your album',
       noticeOk: 'Got it',
+      // 多张注意事项时的滑动提示
+      noticeSwipeHint: 'Swipe left or right to see more',
+      // 化妆师一张都没传时的说明
+      noticeEmpty: 'No notes available right now',
       // 临时链接换不到时的兜底提示
       noticeFallbackTip: 'This is a fallback copy. Tap "Reload" to enable saving to your album',
       noticeRetry: 'Reload',
